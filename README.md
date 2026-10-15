@@ -25,6 +25,11 @@ docker compose up --build
 
 Migrations run on API start in development (`MIGRATE_ON_START=true`; refused in production). Manual: `make migrate`, or `go run ./cmd/api migrate status|up|down` in `services/api`.
 
+## Local accounts
+`make seed` (or `docker compose exec api /api seed`) creates `superadmin@local.test`, `ops@local.test`, `owner@local.test`
+with the conspicuously non-production password printed by the command. Refused when `APP_ENV=production`.
+Grant roles out-of-band: `docker compose exec api /api user grant-platform-role EMAIL ops`.
+
 ## Tests
 `make test` · `make lint`. Migration integration tests run when `TEST_DATABASE_URL` points to a disposable Postgres.
 

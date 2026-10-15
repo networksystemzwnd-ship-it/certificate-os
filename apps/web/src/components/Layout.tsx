@@ -1,8 +1,11 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useSession } from '../features/auth/session';
 
 const link = ({ isActive }: { isActive: boolean }) => (isActive ? 'nav-link active' : 'nav-link');
 
 export function Layout() {
+  const { status, user, logout } = useSession();
+  const navigate = useNavigate();
   return (
     <>
       <a href="#main" className="skip-link">
@@ -14,9 +17,11 @@ export function Layout() {
           <NavLink to="/" end className={link}>
             Home
           </NavLink>
-          <NavLink to="/login" className={link}>
-            Log in
-          </NavLink>
+          {status === 'anonymous' && (
+            <NavLink to="/login" className={link}>
+              Log in
+            </NavLink>
+          )}
           <NavLink to="/app" className={link}>
             Workspace
           </NavLink>
@@ -24,6 +29,20 @@ export function Layout() {
             Operations
           </NavLink>
         </nav>
+        {user && (
+          <span className="session">
+            {user.email}{' '}
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                navigate('/login');
+              }}
+            >
+              Log out
+            </button>
+          </span>
+        )}
       </header>
       <main id="main" tabIndex={-1}>
         <Outlet />

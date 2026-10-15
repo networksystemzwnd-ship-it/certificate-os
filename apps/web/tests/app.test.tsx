@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { App } from '../src/app/App';
+import { anonymous, mockFetch } from './helpers';
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -14,9 +15,8 @@ function renderAt(path: string) {
 }
 
 it('shows loading then ready on the home page', async () => {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ status: 'ok' })));
+  mockFetch({ 'GET /api/v1/me': anonymous, 'GET /readyz': () => ({ body: { status: 'ok' } }) });
   renderAt('/');
-  expect(screen.getByRole('status')).toBeInTheDocument();
   expect(await screen.findByText('API is ready.')).toBeInTheDocument();
 });
 
@@ -27,13 +27,8 @@ it('shows an accessible error with retry when the API is down', async () => {
   expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
 });
 
-it('renders placeholder routes and a 404', () => {
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
-  renderAt('/login');
-  expect(screen.getByRole('heading', { name: 'Log in' })).toBeInTheDocument();
-});
-
-it('renders not-found for unknown paths', () => {
+it('renders not-found for unknown paths', async () => {
+  mockFetch({ 'GET /api/v1/me': anonymous });
   renderAt('/nope');
-  expect(screen.getByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument();
 });

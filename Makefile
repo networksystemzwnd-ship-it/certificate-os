@@ -11,7 +11,7 @@ migrate:
 	cd services/api && go run ./cmd/api migrate up
 
 seed:
-	@echo "No seed data yet (arrives with COS-007)."
+	docker compose exec api /api seed
 
 fmt:
 	cd services/api && gofmt -w .

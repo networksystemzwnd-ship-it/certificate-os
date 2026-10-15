@@ -5,8 +5,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -15,6 +17,9 @@ type Config struct {
 	LogLevel       string
 	DatabaseURL    string
 	MigrateOnStart bool
+	WebOrigin      string        // the single allowed browser origin (CORS/CSRF), e.g. http://localhost:5173
+	SessionTTL     time.Duration // absolute session lifetime
+	CookieSecure   bool          // derived: true in production
 }
 
 // Load reads configuration using the provided lookup function (os.LookupEnv in production).
@@ -50,6 +55,20 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		errs = append(errs, errors.New("MIGRATE_ON_START must be a boolean"))
 	}
 	cfg.MigrateOnStart = migrate
+
+	cfg.WebOrigin = strings.TrimRight(get("WEB_ORIGIN", "http://localhost:5173"), "/")
+	if u, err := url.Parse(cfg.WebOrigin); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" {
+		errs = append(errs, errors.New("WEB_ORIGIN must be an origin like https://app.example.com (scheme and host only)"))
+	} else if cfg.Env == "production" && u.Scheme != "https" {
+		errs = append(errs, errors.New("WEB_ORIGIN must use https in production"))
+	}
+
+	hours, err := strconv.Atoi(get("SESSION_TTL_HOURS", "12"))
+	if err != nil || hours < 1 || hours > 24*30 {
+		errs = append(errs, errors.New("SESSION_TTL_HOURS must be an integer between 1 and 720"))
+	}
+	cfg.SessionTTL = time.Duration(hours) * time.Hour
+	cfg.CookieSecure = cfg.Env == "production"
 
 	if cfg.DatabaseURL == "" {
 		errs = append(errs, errors.New("DATABASE_URL is required"))

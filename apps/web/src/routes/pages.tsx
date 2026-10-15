@@ -1,6 +1,8 @@
 import { api, ApiError } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../components/States';
+import { AuthForm } from '../features/auth/AuthForm';
+import { RequirePermission, RequireSession } from '../features/auth/guards';
 
 export function Home() {
   const ready = useAsync(() => api<{ status: string }>('/readyz'), []);
@@ -23,20 +25,23 @@ export function Home() {
 }
 
 // Placeholders: real behavior arrives with COS-007 (auth) and later milestones.
-export const Login = () => (
-  <EmptyState title="Log in">
-    <p>Authentication arrives with COS-007.</p>
-  </EmptyState>
-);
+export const Login = () => <AuthForm mode="login" />;
+export const Register = () => <AuthForm mode="register" />;
 export const Workspace = () => (
-  <EmptyState title="Institute workspace">
-    <p>Available after authentication and tenancy are implemented (COS-007/008).</p>
-  </EmptyState>
+  <RequireSession>
+    <EmptyState title="Institute workspace">
+      <p>Institute workspaces arrive with tenancy (COS-008).</p>
+    </EmptyState>
+  </RequireSession>
 );
 export const Operations = () => (
-  <EmptyState title="Operations">
-    <p>Application review arrives with COS-009/010.</p>
-  </EmptyState>
+  <RequireSession>
+    <RequirePermission permission="ops.applications.read">
+      <EmptyState title="Operations">
+        <p>Application review arrives with COS-009/010.</p>
+      </EmptyState>
+    </RequirePermission>
+  </RequireSession>
 );
 export const NotFoundPage = () => (
   <EmptyState title="Page not found">

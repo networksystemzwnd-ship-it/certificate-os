@@ -26,6 +26,9 @@ export async function api<T>(path: string, init: RequestInit = {}, baseUrl = BAS
   const headers = new Headers(init.headers);
   headers.set('X-Request-ID', newRequestId());
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  // CSRF defence: the API requires this header on state-changing requests (cross-site forms cannot set it).
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') headers.set('X-CSRF-Protection', '1');
 
   let res: Response;
   try {

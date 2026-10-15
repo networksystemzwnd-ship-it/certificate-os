@@ -27,7 +27,20 @@ Template: see `PROJECT_BRAIN.md` §12.5.
 - Status: Blocked (source and tests written; never installed/built — npm unreachable in sandbox)
 - Priority: P0
 
-### COS-007 — Identity and authorization design — Ready
+### COS-007 — Identity and authorization design
+- Status: Review
+- Priority: P0
+- Goal: authentication + capability-based permissions; session strategy documented (D-107..D-111).
+- Acceptance:
+  - [x] unauthenticated requests cannot reach protected endpoints (tested)
+  - [x] a user cannot grant themselves a role (unknown-field rejection + no role endpoint; tested)
+  - [x] suspended users lose live sessions immediately (tested at service and HTTP level)
+  - [x] auth/role-denial tests (platform ops have no student/certificate permissions; unknown roles fail closed)
+  - [x] login rate limiting; generic login errors; CSRF; strict CORS
+  - [ ] pgstore + migration 0002 + CLI verified against real Postgres (needs pgx; run `go test ./...` with TEST_DATABASE_URL)
+  - [ ] frontend tests run (needs npm install)
+- Not included (P1): password reset, email verification, MFA, session listing.
+
 ### COS-008 — Tenant context and isolation — Proposed
 ### COS-009 — Institute application schema and workflow — Proposed
 ### COS-010 — Operations review UI/API — Proposed

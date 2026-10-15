@@ -16,6 +16,8 @@ const (
 	CodeConflict     = "conflict"
 	CodeRateLimited  = "rate_limited"
 	CodeMethod       = "method_not_allowed"
+	CodeCSRF         = "csrf_rejected"
+	CodeBadRequest   = "bad_request"
 )
 
 type ErrorBody struct {

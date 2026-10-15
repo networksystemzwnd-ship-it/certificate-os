@@ -2,6 +2,9 @@
 //
 //	api            start the server
 //	api migrate up|down|status
+//	api seed                                   local dev accounts (refused in production)
+//	api user grant-platform-role EMAIL ROLE    ROLE: super_admin | ops | none
+//	api user suspend|reactivate EMAIL
 package main
 
 import (
@@ -16,6 +19,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/certificate-os/api/internal/auth"
+	"github.com/certificate-os/api/internal/auth/authhttp"
+	"github.com/certificate-os/api/internal/auth/pgstore"
 	"github.com/certificate-os/api/internal/platform/config"
 	"github.com/certificate-os/api/internal/platform/health"
 	"github.com/certificate-os/api/internal/platform/httpx"
@@ -66,6 +72,21 @@ func run(args []string) error {
 		return runMigrate(ctx, runner, args[1:])
 	}
 
+	authSvc, err := auth.NewService(pgstore.New(pool), auth.NewHasher(), cfg.SessionTTL)
+	if err != nil {
+		return err
+	}
+	if len(args) > 0 {
+		switch args[0] {
+		case "seed":
+			return runSeed(ctx, cfg, authSvc, pgstore.New(pool))
+		case "user":
+			return runUser(ctx, authSvc, pgstore.New(pool), args[1:])
+		default:
+			return fmt.Errorf("unknown command %q (expected: migrate, seed, user)", args[0])
+		}
+	}
+
 	if cfg.MigrateOnStart {
 		if err := waitForDB(ctx, pool, 30*time.Second); err != nil {
 			return err
@@ -79,11 +100,12 @@ func run(args []string) error {
 
 	mux := http.NewServeMux()
 	health.Register(mux, pool)
+	authhttp.NewHandler(authSvc, authhttp.CookieConfig{Secure: cfg.CookieSecure, TTL: cfg.SessionTTL}, log).Register(mux)
 	mux.HandleFunc("/", httpx.NotFound)
 
 	srv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           httpx.Chain(log, mux),
+		Handler:           httpx.Chain(log, httpx.CORS(cfg.WebOrigin, httpx.CSRF(cfg.WebOrigin, mux))),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
