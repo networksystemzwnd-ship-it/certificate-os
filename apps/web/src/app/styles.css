@@ -1,0 +1,12 @@
+:root { font-family: system-ui, sans-serif; color: #1a1a1a; background: #fafafa; }
+body { margin: 0; }
+.app-header { display: flex; gap: 2rem; align-items: center; padding: .75rem 1.5rem; background: #fff; border-bottom: 1px solid #ddd; }
+.app-header nav { display: flex; gap: 1rem; }
+.nav-link { color: #1a4fd6; text-decoration: none; padding: .25rem .5rem; border-radius: 4px; }
+.nav-link.active { font-weight: 700; text-decoration: underline; }
+main { padding: 1.5rem; max-width: 60rem; margin: 0 auto; }
+.skip-link { position: absolute; left: -999px; }
+.skip-link:focus { left: 1rem; top: 1rem; background: #fff; padding: .5rem; }
+.state { padding: 1rem; border: 1px solid #ccc; border-radius: 6px; background: #fff; }
+.state-error { border-color: #b3261e; }
+:focus-visible { outline: 3px solid #1a4fd6; outline-offset: 2px; }
