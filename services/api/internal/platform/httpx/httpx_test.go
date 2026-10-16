@@ -118,7 +118,8 @@ func TestCORSOnlyAllowedOrigin(t *testing.T) {
 	req.Header.Set("Access-Control-Request-Method", "POST")
 	rr = httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
-	if rr.Code != 204 || !strings.Contains(rr.Header().Get("Access-Control-Allow-Headers"), CSRFHeader) {
+	if rr.Code != 204 || !strings.Contains(rr.Header().Get("Access-Control-Allow-Headers"), CSRFHeader) ||
+		!strings.Contains(rr.Header().Get("Access-Control-Allow-Headers"), "X-Institute-ID") {
 		t.Fatalf("preflight: %d %v", rr.Code, rr.Header())
 	}
 }

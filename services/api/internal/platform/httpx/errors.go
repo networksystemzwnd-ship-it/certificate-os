@@ -8,16 +8,17 @@ import (
 
 // Stable machine-readable error codes.
 const (
-	CodeInternal     = "internal_error"
-	CodeNotFound     = "not_found"
-	CodeValidation   = "validation_failed"
-	CodeUnauthorized = "unauthenticated"
-	CodeForbidden    = "forbidden"
-	CodeConflict     = "conflict"
-	CodeRateLimited  = "rate_limited"
-	CodeMethod       = "method_not_allowed"
-	CodeCSRF         = "csrf_rejected"
-	CodeBadRequest   = "bad_request"
+	CodeInternal          = "internal_error"
+	CodeNotFound          = "not_found"
+	CodeValidation        = "validation_failed"
+	CodeUnauthorized      = "unauthenticated"
+	CodeForbidden         = "forbidden"
+	CodeConflict          = "conflict"
+	CodeRateLimited       = "rate_limited"
+	CodeMethod            = "method_not_allowed"
+	CodeCSRF              = "csrf_rejected"
+	CodeBadRequest        = "bad_request"
+	CodeInstituteRequired = "institute_required"
 )
 
 type ErrorBody struct {

@@ -1,6 +1,10 @@
 package auth
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 // Permission is a named capability. Business logic checks permissions, never role names.
 type Permission string
@@ -124,4 +128,34 @@ func HasPlatformPermission(r PlatformRole, p Permission) bool {
 func HasInstitutePermission(r InstituteRole, p Permission) bool {
 	_, ok := instituteRolePerms[r][p]
 	return ok
+}
+
+var ownerOnly = set(PermStaffManage, PermInstituteManage)
+
+// IsInstitutePermission reports whether p is a known institute-level permission.
+func IsInstitutePermission(p Permission) bool {
+	for _, perms := range instituteRolePerms {
+		if _, ok := perms[p]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// IsReadPermission reports whether p only reads data. Suspended institutes keep read-only access
+// (DECISIONS D-114): exports are NOT read permissions here, because they bulk-extract PII.
+func IsReadPermission(p Permission) bool { return strings.HasSuffix(string(p), ".read") }
+
+// ValidateGrants checks per-membership extra permissions. Grants must be known institute-level
+// permissions and may never include owner-only or platform permissions (no escalation by grant).
+func ValidateGrants(grants []Permission) error {
+	for _, g := range grants {
+		switch {
+		case !IsInstitutePermission(g):
+			return fmt.Errorf("unknown or non-institute permission %q", g)
+		case func() bool { _, o := ownerOnly[g]; return o }():
+			return fmt.Errorf("permission %q cannot be granted individually", g)
+		}
+	}
+	return nil
 }

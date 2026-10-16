@@ -3,6 +3,7 @@ import { useAsync } from '../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../components/States';
 import { AuthForm } from '../features/auth/AuthForm';
 import { RequirePermission, RequireSession } from '../features/auth/guards';
+import { WorkspaceView } from '../features/institute/Workspace';
 
 export function Home() {
   const ready = useAsync(() => api<{ status: string }>('/readyz'), []);
@@ -29,9 +30,7 @@ export const Login = () => <AuthForm mode="login" />;
 export const Register = () => <AuthForm mode="register" />;
 export const Workspace = () => (
   <RequireSession>
-    <EmptyState title="Institute workspace">
-      <p>Institute workspaces arrive with tenancy (COS-008).</p>
-    </EmptyState>
+    <WorkspaceView />
   </RequireSession>
 );
 export const Operations = () => (

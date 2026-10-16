@@ -5,6 +5,7 @@
 //	api seed                                   local dev accounts (refused in production)
 //	api user grant-platform-role EMAIL ROLE    ROLE: super_admin | ops | none
 //	api user suspend|reactivate EMAIL
+//	api institute create|add-member|remove-member|status ...   (until COS-009/010 onboarding exists)
 package main
 
 import (
@@ -26,6 +27,8 @@ import (
 	"github.com/certificate-os/api/internal/platform/health"
 	"github.com/certificate-os/api/internal/platform/httpx"
 	"github.com/certificate-os/api/internal/platform/migrate"
+	"github.com/certificate-os/api/internal/tenancy"
+	tenancypg "github.com/certificate-os/api/internal/tenancy/pgstore"
 	"github.com/certificate-os/api/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -79,11 +82,13 @@ func run(args []string) error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "seed":
-			return runSeed(ctx, cfg, authSvc, pgstore.New(pool))
+			return runSeed(ctx, cfg, authSvc, pgstore.New(pool), tenancypg.New(pool))
 		case "user":
 			return runUser(ctx, authSvc, pgstore.New(pool), args[1:])
+		case "institute":
+			return runInstitute(ctx, pgstore.New(pool), tenancypg.New(pool), args[1:])
 		default:
-			return fmt.Errorf("unknown command %q (expected: migrate, seed, user)", args[0])
+			return fmt.Errorf("unknown command %q (expected: migrate, seed, user, institute)", args[0])
 		}
 	}
 
@@ -100,7 +105,9 @@ func run(args []string) error {
 
 	mux := http.NewServeMux()
 	health.Register(mux, pool)
-	authhttp.NewHandler(authSvc, authhttp.CookieConfig{Secure: cfg.CookieSecure, TTL: cfg.SessionTTL}, log).Register(mux)
+	authH := authhttp.NewHandler(authSvc, authhttp.CookieConfig{Secure: cfg.CookieSecure, TTL: cfg.SessionTTL}, log)
+	authH.Register(mux)
+	(&tenancy.Handler{Svc: &tenancy.Service{Store: tenancypg.New(pool)}, Log: log, Authn: authH.Authenticate}).Register(mux)
 	mux.HandleFunc("/", httpx.NotFound)
 
 	srv := &http.Server{

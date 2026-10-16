@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { api, ApiError } from '../../lib/api';
+import { api, ApiError, setActiveInstitute } from '../../lib/api';
 
 export interface User {
   id: string;
@@ -67,6 +67,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       await api('/api/v1/auth/logout', { method: 'POST' });
     } finally {
+      setActiveInstitute(null);
       setUser(null);
       setStatus('anonymous');
     }

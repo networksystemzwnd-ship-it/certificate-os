@@ -35,5 +35,11 @@ Decisions override `PROJECT_BRAIN.md` (see its §0 precedence). Never rewrite hi
 | D-110 | 2026-10-15 | Password hashing: PBKDF2-HMAC-SHA256, 600k iterations, Go stdlib (`crypto/pbkdf2`); `NeedsRehash` supports migration to argon2id later | No new dependency; revisit with `golang.org/x/crypto` |
 | D-111 | 2026-10-15 | Platform roles are granted only out-of-band (`api user grant-platform-role`), never via the HTTP API | Prevent self-escalation |
 | D-112 | 2026-10-15 | User-chosen infra tweaks: MinIO image `cgr.dev/chainguard/minio:latest`; API build image `golang:1.25-alpine` | Applied by product owner after local testing |
+| D-113 | 2026-10-16 | Tenant resolution: the client may send `X-Institute-ID`, but it is only matched against the caller's OWN active memberships. Exactly one membership → header optional; several → header required (400 `institute_required`). Non-member and non-existent institutes return the identical 403 | Brain §6.3: tenant from membership, no enumeration |
+| D-114 | 2026-10-16 | Suspended institute: members keep only `*.read` permissions (exports excluded, because they bulk-extract PII); closed institute: no member access | Brain §3.2 "explicit read-only access policy" — **please confirm** (PROJECT_BRAIN §17 Q7) |
+| D-115 | 2026-10-16 | Per-membership `grants` extend role defaults but can never include owner-only (`staff.manage`, `institute.manage`) or platform permissions; enforced in code and by a DB CHECK | No escalation by grant; implements D-105 |
+| D-116 | 2026-10-16 | Compile-time tenant scoping: tenant-owned repository methods take a `tenancy.Scope`, constructible only from a resolved `Tenant`. `TrustedScope` is for tests/admin tooling only; `AdminStore` is never reachable from handlers | A forgotten tenant check fails to compile rather than leaking |
+| D-117 | 2026-10-16 | PostgreSQL RLS deferred to the first tenant-owned table; hook `tenantdb.WithTenant` shipped; see ADR-001 (Proposed) | Superuser dev DB bypasses RLS; nothing to protect yet |
+| D-118 | 2026-10-16 | Institutes and memberships are created out-of-band (`api institute ...`, `api seed`) until application review exists (COS-009/010) | Onboarding workflow is a later milestone |
 
 Open product-owner questions: see `PROJECT_BRAIN.md` §17.

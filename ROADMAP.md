@@ -3,7 +3,7 @@
 | Milestone | Status |
 |---|---|
 | M0 Project foundation | In progress (COS-001..006 built; exit gate NOT met: pgx/npm deps never installed, so migrations, cmd/api, web build/tests and docker build are unverified) |
-| M1 Identity and tenancy | In progress (COS-007 built, review pending; COS-008 next) |
+| M1 Identity and tenancy | In progress (COS-007, COS-008 built and in review; exit gate needs your Postgres/frontend run) |
 | M2 Institute onboarding and operations | Not started |
 | M3 Institute records | Not started |
 | M4 Templates and issuance | Not started |

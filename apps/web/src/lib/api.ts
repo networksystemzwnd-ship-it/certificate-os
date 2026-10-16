@@ -16,6 +16,12 @@ export class ApiError extends Error {
 
 const BASE_URL: string = import.meta.env?.VITE_API_BASE_URL ?? '';
 
+let activeInstitute: string | null = null;
+/** Selects which institute subsequent requests act on (sent as X-Institute-ID; the server verifies membership). */
+export function setActiveInstitute(id: string | null) {
+  activeInstitute = id;
+}
+
 function newRequestId(): string {
   const bytes = new Uint8Array(12);
   crypto.getRandomValues(bytes);
@@ -26,6 +32,7 @@ export async function api<T>(path: string, init: RequestInit = {}, baseUrl = BAS
   const headers = new Headers(init.headers);
   headers.set('X-Request-ID', newRequestId());
   if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (activeInstitute) headers.set('X-Institute-ID', activeInstitute);
   // CSRF defence: the API requires this header on state-changing requests (cross-site forms cannot set it).
   const method = (init.method ?? 'GET').toUpperCase();
   if (method !== 'GET' && method !== 'HEAD') headers.set('X-CSRF-Protection', '1');

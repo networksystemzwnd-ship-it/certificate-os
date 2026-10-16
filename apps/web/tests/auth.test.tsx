@@ -26,6 +26,7 @@ it('logs in, sends the CSRF header, and lands in the workspace', async () => {
   let loggedIn = false;
   const fetchMock = mockFetch({
     'GET /api/v1/me': () => (loggedIn ? { body: user() } : anonymous(undefined)),
+    'GET /api/v1/me/institutes': () => ({ body: { institutes: [] } }),
     'POST /api/v1/auth/login': () => {
       loggedIn = true;
       return { body: user() };

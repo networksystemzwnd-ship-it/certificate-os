@@ -17,6 +17,13 @@ Read `PROJECT_BRAIN.md` (especially §12) before changing anything. Summary:
 - Never weaken tests, validation, or permissions to get green.
 - Update migrations, OpenAPI (`docs/api/openapi.yaml`), and tests alongside code.
 
+## Tenancy rules (COS-008)
+- Tenant routes use `tenancyHandler.Guard(permission, handler)`; never read an institute ID from a path, body or header yourself.
+- Every tenant-owned repository method takes `tenancy.Scope` and filters EVERY query by `scope.InstituteID()`.
+- `tenancy.TrustedScope` and `tenancy.AdminStore` are for tests and CLI only. Using them in handler/service code needs explicit review.
+- Every new tenant-owned resource family MUST add cross-tenant negative tests using `tenancytest.NewFixture` (users of A must not read or write B, including by ID guessing and by header).
+- Check permissions with `Tenant.Can(perm)` (it already applies suspended-institute read-only rules), not role names.
+
 ## Before reporting done
 - Run `make lint test` (and `make e2e` when relevant).
 - Review the diff for secrets and unrelated changes.

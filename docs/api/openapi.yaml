@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -44,7 +44,42 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/UserEnvelope' } } } }
         '401': { $ref: '#/components/responses/Error' }
+  /api/v1/me/institutes:
+    get:
+      summary: Institutes the current user is an active member of
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/institute:
+    get:
+      summary: The current institute (tenant) with the caller's role and effective permissions
+      description: Tenant is resolved from the caller's memberships. Send X-Institute-ID when the user belongs to several.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '200': { description: OK }
+        '400': { description: institute_required (several memberships, no header), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { description: Not a member (identical for non-existent institutes), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/v1/institute/members:
+    get:
+      summary: Members of the current institute (requires staff.manage)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '200': { description: OK }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
 components:
+  parameters:
+    InstituteId:
+      name: X-Institute-ID
+      in: header
+      required: false
+      description: Selects among the caller's own memberships; never trusted on its own.
+      schema: { type: string }
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: cos_session }
   requestBodies:

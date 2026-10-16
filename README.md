@@ -28,6 +28,9 @@ Migrations run on API start in development (`MIGRATE_ON_START=true`; refused in 
 ## Local accounts
 `make seed` (or `docker compose exec api /api seed`) creates `superadmin@local.test`, `ops@local.test`, `owner@local.test`
 with the conspicuously non-production password printed by the command. Refused when `APP_ENV=production`.
+Seed tenants: **Demo Institute** (`owner@`, `admin@`, `staff@`, `multi@` as staff) and **Other Institute**
+(`owner2@`, `multi@` as admin) — log in as `multi@local.test` to try the institute picker, or compare what
+`owner@` and `owner2@` can see. Manage institutes out-of-band with `docker compose exec api /api institute ...`.
 Grant roles out-of-band: `docker compose exec api /api user grant-platform-role EMAIL ops`.
 
 ## Tests
