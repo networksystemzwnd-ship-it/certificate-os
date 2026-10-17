@@ -20,6 +20,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/certificate-os/api/internal/applications"
+	applicationspg "github.com/certificate-os/api/internal/applications/pgstore"
+	"github.com/certificate-os/api/internal/audit"
+	auditpg "github.com/certificate-os/api/internal/audit/pgstore"
 	"github.com/certificate-os/api/internal/auth"
 	"github.com/certificate-os/api/internal/auth/authhttp"
 	"github.com/certificate-os/api/internal/auth/pgstore"
@@ -84,9 +88,9 @@ func run(args []string) error {
 		case "seed":
 			return runSeed(ctx, cfg, authSvc, pgstore.New(pool), tenancypg.New(pool))
 		case "user":
-			return runUser(ctx, authSvc, pgstore.New(pool), args[1:])
+			return runUser(ctx, authSvc, pgstore.New(pool), auditpg.New(pool), args[1:])
 		case "institute":
-			return runInstitute(ctx, pgstore.New(pool), tenancypg.New(pool), args[1:])
+			return runInstitute(ctx, pgstore.New(pool), tenancypg.New(pool), auditpg.New(pool), args[1:])
 		default:
 			return fmt.Errorf("unknown command %q (expected: migrate, seed, user, institute)", args[0])
 		}
@@ -108,6 +112,11 @@ func run(args []string) error {
 	authH := authhttp.NewHandler(authSvc, authhttp.CookieConfig{Secure: cfg.CookieSecure, TTL: cfg.SessionTTL}, log)
 	authH.Register(mux)
 	(&tenancy.Handler{Svc: &tenancy.Service{Store: tenancypg.New(pool)}, Log: log, Authn: authH.Authenticate}).Register(mux)
+	auditStore := auditpg.New(pool)
+	tenantStore := tenancypg.New(pool)
+	(&applications.Handler{Svc: applications.NewService(applicationspg.New(pool), auditStore), Log: log, Authn: authH.Authenticate}).Register(mux)
+	(&tenancy.OpsHandler{Svc: &tenancy.OpsService{Store: tenantStore}, Log: log, Authn: authH.Authenticate}).Register(mux)
+	(&audit.Handler{Reader: auditStore, Log: log, Authn: authH.Authenticate}).Register(mux)
 	mux.HandleFunc("/", httpx.NotFound)
 
 	srv := &http.Server{

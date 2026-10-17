@@ -1,7 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { SessionProvider } from '../features/auth/session';
-import { Home, Login, NotFoundPage, Operations, Register, Workspace } from '../routes/pages';
+import { Apply, Home, Login, NotFoundPage, Operations, Register, Workspace } from '../routes/pages';
 
 export function App() {
   return (
@@ -12,6 +12,7 @@ export function App() {
           <Route path="login" element={<Login />} />
           <Route path="register" element={<Register />} />
           <Route path="app/*" element={<Workspace />} />
+          <Route path="apply" element={<Apply />} />
           <Route path="ops/*" element={<Operations />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

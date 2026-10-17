@@ -1,7 +1,7 @@
 # ADR-001: Row-level security as defense in depth for tenant isolation
-- Status: Proposed
+- Status: Accepted (2026-10-16, product owner: "take the best option for production")
 - Date: 2026-10-15
-- Decision owner: Product owner (confirm before M3 ships the first tenant-owned table)
+- Decision owner: Product owner
 
 ## Context
 Brain §6.3 asks us to "consider PostgreSQL row-level security as defense in depth". The primary
@@ -32,6 +32,17 @@ courses/students), in the same migration:
 - all tenant-owned repository methods run inside `WithTenant`;
 - add integration tests proving a connection scoped to institute A cannot read or write B's rows
   *even with the application filter deliberately removed*.
+
+## Production gate (hard requirement)
+Accepted option 2 is the production-best path because RLS needs real tenant-owned tables to protect
+and a restricted runtime role to be effective. Therefore, **no tenant-owned business table (students,
+courses, batches, templates, certificates, ...) may be merged without RLS**. This is recorded as backlog
+item COS-RLS (blocking for M3) and as a release-checklist line. Concretely, the first such migration must:
+- create the restricted runtime role and switch API/worker `DATABASE_URL` to it (migrations keep the owner role);
+- `ENABLE` + `FORCE` RLS with `USING`/`WITH CHECK` on `institute_id = current_setting('app.institute_id', true)::uuid`;
+- run all tenant-owned repository access inside `tenantdb.WithTenant`;
+- `REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs` from the runtime role (append-only audit, see D-121);
+- include the "filter deliberately removed" cross-tenant integration test.
 
 ## Consequences
 - Until then, isolation rests on the compile-time `Scope` plus cross-tenant HTTP tests

@@ -54,7 +54,33 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [x] reusable `tenancytest.Fixture` for every future resource family
   - [ ] pg store + migration 0003 + CLI verified on real Postgres (type-checked only; run `go test ./...` with TEST_DATABASE_URL)
   - [ ] frontend tests run (needs npm install)
-- Decisions to confirm: D-114 (suspended = read-only), ADR-001 (RLS timing).
-- Not included: invitations, role changes, institute profile edits (M3); audit log (COS-009); RLS (ADR-001).
-### COS-009 — Institute application schema and workflow — Proposed
-### COS-010 — Operations review UI/API — Proposed
+- Decisions: D-114 confirmed by product owner (suspended = read-only, exports blocked); ADR-001 Accepted.
+- Not included: invitations, role changes, institute profile edits (M3); RLS (ADR-001).
+### COS-RLS — Row-level security + restricted runtime role — Proposed (BLOCKS M3)
+- Priority: P0
+- Goal: implement ADR-001's production gate with the first tenant-owned table; no tenant-owned table merges without it.
+- Acceptance:
+  - [ ] restricted non-superuser runtime role used by API/worker; owner role only for migrations
+  - [ ] ENABLE + FORCE RLS and fail-closed policies on every tenant-owned table
+  - [ ] all tenant repositories run inside `tenantdb.WithTenant`
+  - [ ] integration test: scope A cannot read/write B even with the application filter removed
+  - [ ] runtime role cannot UPDATE/DELETE/TRUNCATE `audit_logs`
+
+### COS-009 — Institute application schema, state machine and audit log — Built (needs your verification)
+- Priority: P0
+- Delivered: migrations 0004 (audit_logs, append-only) and 0005 (institute_applications); `applications` domain + service; memory and Postgres stores sharing one contract; applicant API (`/api/v1/institute-applications`); audit events for every change; CLI actions audited.
+- Acceptance:
+  - [x] state machine rejects illegal transitions; one open application per user; slug reservation (store contract, memory store, `-race`)
+  - [x] approval is atomic (institute + owner membership + audit); failed approval changes nothing (contract)
+  - [x] migrations 0001–0005 apply, revert and re-apply on real PostgreSQL 16; constraints, unique indexes and append-only triggers exercised with hand-run SQL equivalent to the store queries
+  - [ ] Go pg stores run via `TEST_DATABASE_URL=... go test ./...` (pgx could not be installed in the build sandbox; the code type-checks against a stub only)
+  - [ ] frontend type-check/lint/tests (npm unavailable in the build sandbox)
+### COS-010 — Operations review API and UI — Built (needs your verification)
+- Priority: P0
+- Delivered: ops queue/detail/history, start-review, approve, reject, request-changes (`/api/v1/ops/institute-applications`); institute list, suspend, reactivate (`/api/v1/ops/institutes`); audit view (`/api/v1/ops/audit`); React pages under `/apply` and `/ops`.
+- Acceptance:
+  - [x] only ops/super_admin reach ops routes; plain users get 403, anonymous 401; audit view is super_admin only
+  - [x] ops never see drafts; self-review blocked; reasons validated; double approval is 409
+  - [ ] same unverified items as COS-009 (pg tests, frontend build)
+### COS-011 — Applicant document upload — Proposed (deferred, see D-123)
+- Needs: object-store adapter, size/type limits, malware-scan decision, retention policy.

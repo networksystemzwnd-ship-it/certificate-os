@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -72,6 +72,116 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+  /api/v1/institute-applications:
+    post:
+      summary: Start an application (draft). Any subset of fields; provided fields are validated. One open application per user.
+      security: [{ cookieAuth: [] }]
+      requestBody: { $ref: '#/components/requestBodies/ApplicationPatch' }
+      responses:
+        '201': { $ref: '#/components/responses/Application' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    get:
+      summary: The caller's own applications
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { description: OK }
+        '401': { $ref: '#/components/responses/Error' }
+  /api/v1/institute-applications/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: One of the caller's own applications (another user's id is 404)
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { $ref: '#/components/responses/Application' }, '401': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' } }
+    patch:
+      summary: Edit details (only while draft or changes_requested)
+      security: [{ cookieAuth: [] }]
+      requestBody: { $ref: '#/components/requestBodies/ApplicationPatch' }
+      responses: { '200': { $ref: '#/components/responses/Application' }, '400': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /api/v1/institute-applications/{id}/submit:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Submit for review (all required fields and the attestation must be present; reserves the slug)
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { $ref: '#/components/responses/Application' }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institute-applications:
+    get:
+      summary: Review queue (never includes drafts). Requires ops.applications.read
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: status, in: query, required: false, description: Comma-separated statuses, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, maximum: 100 } }
+        - { name: offset, in: query, required: false, schema: { type: integer } }
+      responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institute-applications/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Application detail (requires ops.applications.read)
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { $ref: '#/components/responses/Application' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institute-applications/{id}/history:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Audit history of one application (requires ops.applications.read)
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institute-applications/{id}/start-review:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: submitted → under_review (requires ops.applications.review; reviewers cannot review their own application)
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { $ref: '#/components/responses/Application' }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institute-applications/{id}/approve:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Approve — atomically creates the institute and makes the applicant its owner (optional body {note})
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { description: Approved; returns application and institute }, '403': { $ref: '#/components/responses/Error' }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institute-applications/{id}/reject:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Reject with a reason (10–2000 characters; shown to the applicant)
+      security: [{ cookieAuth: [] }]
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses: { '200': { $ref: '#/components/responses/Application' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institute-applications/{id}/request-changes:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Ask the applicant to change details (reason 10–2000 characters)
+      security: [{ cookieAuth: [] }]
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses: { '200': { $ref: '#/components/responses/Application' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institutes:
+    get:
+      summary: List institutes (requires ops.institutes.manage); q matches name or slug
+      security: [{ cookieAuth: [] }]
+      parameters: [{ name: q, in: query, required: false, schema: { type: string } }]
+      responses: { '200': { description: OK }, '403': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institutes/{id}/suspend:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Suspend an active institute (read-only for members, D-114). Reason required.
+      security: [{ cookieAuth: [] }]
+      requestBody: { $ref: '#/components/requestBodies/Reason' }
+      responses: { '200': { description: OK }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' }, '422': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/institutes/{id}/reactivate:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Reactivate a suspended institute
+      security: [{ cookieAuth: [] }]
+      responses: { '200': { description: OK }, '404': { $ref: '#/components/responses/Error' }, '409': { $ref: '#/components/responses/Error' } }
+  /api/v1/ops/audit:
+    get:
+      summary: "Audit log, newest first (super_admin only: ops.audit.read)"
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: entity_type, in: query, required: false, schema: { type: string } }
+        - { name: entity_id, in: query, required: false, schema: { type: string } }
+        - { name: action, in: query, required: false, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, maximum: 200 } }
+      responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Error' }, '403': { $ref: '#/components/responses/Error' } }
 components:
   parameters:
     InstituteId:
@@ -79,6 +189,11 @@ components:
       in: header
       required: false
       description: Selects among the caller's own memberships; never trusted on its own.
+      schema: { type: string }
+    Id:
+      name: id
+      in: path
+      required: true
       schema: { type: string }
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: cos_session }
@@ -94,7 +209,38 @@ components:
             properties:
               email: { type: string, format: email }
               password: { type: string, minLength: 12, maxLength: 128 }
+    ApplicationPatch:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            properties:
+              name: { type: string }
+              slug: { type: string }
+              category: { type: string, enum: [training_institute, academy, vocational_centre, school, college, other] }
+              address_line1: { type: string }
+              address_line2: { type: string }
+              city: { type: string }
+              region: { type: string }
+              postal_code: { type: string }
+              country: { type: string, description: ISO 3166-1 alpha-2 }
+              official_email: { type: string }
+              phone: { type: string }
+              rep_name: { type: string }
+              rep_role: { type: string }
+              website: { type: string }
+              attested: { type: boolean }
+    Reason:
+      required: true
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: false, required: [reason], properties: { reason: { type: string, minLength: 10, maxLength: 2000 } } }
   responses:
+    Application:
+      description: The application
+      content: { application/json: { schema: { type: object, properties: { application: { type: object } } } } }
     Error:
       description: Error envelope
       content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

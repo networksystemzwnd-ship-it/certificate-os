@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/certificate-os/api/internal/audit"
 	"github.com/certificate-os/api/internal/auth"
 	"github.com/certificate-os/api/internal/platform/config"
 	"github.com/certificate-os/api/internal/tenancy"
@@ -84,8 +85,18 @@ func runSeed(ctx context.Context, cfg config.Config, svc *auth.Service, store au
 	return nil
 }
 
+// cliAudit records an out-of-band administrative action. The CLI path is not transactional with the
+// change (D-121): if recording fails the command reports an error so the operator can reconcile.
+func cliAudit(ctx context.Context, aw audit.Writer, action, entityType, entityID, instituteID string, meta map[string]any) error {
+	if err := aw.Record(ctx, audit.Event{ActorType: audit.ActorCLI, Action: action, EntityType: entityType,
+		EntityID: entityID, InstituteID: instituteID, Metadata: meta}); err != nil {
+		return fmt.Errorf("the change was applied but its audit event could not be recorded: %w", err)
+	}
+	return nil
+}
+
 // runUser implements out-of-band administration (platform roles are never settable via the API).
-func runUser(ctx context.Context, svc *auth.Service, store auth.Store, args []string) error {
+func runUser(ctx context.Context, svc *auth.Service, store auth.Store, aw audit.Writer, args []string) error {
 	usage := errors.New("usage: api user grant-platform-role EMAIL super_admin|ops|none | api user suspend|reactivate EMAIL")
 	if len(args) < 2 {
 		return usage
@@ -114,24 +125,26 @@ func runUser(ctx context.Context, svc *auth.Service, store auth.Store, args []st
 			return err
 		}
 		fmt.Printf("set platform role of %s to %q\n", email, role)
+		return cliAudit(ctx, aw, "user.platform_role_changed", "user", u.ID, "", map[string]any{"role": string(role)})
 	case "suspend":
 		if err := svc.SuspendUser(ctx, u.ID); err != nil {
 			return err
 		}
 		fmt.Println("suspended", email)
+		return cliAudit(ctx, aw, "user.suspended", "user", u.ID, "", nil)
 	case "reactivate":
 		if err := svc.ReactivateUser(ctx, u.ID); err != nil {
 			return err
 		}
 		fmt.Println("reactivated", email)
+		return cliAudit(ctx, aw, "user.reactivated", "user", u.ID, "", nil)
 	default:
 		return usage
 	}
-	return nil
 }
 
-// runInstitute implements out-of-band institute administration until application review (COS-009/010).
-func runInstitute(ctx context.Context, users auth.Store, tenants tenancy.AdminStore, args []string) error {
+// runInstitute implements out-of-band institute administration (closing is CLI-only by design).
+func runInstitute(ctx context.Context, users auth.Store, tenants tenancy.AdminStore, aw audit.Writer, args []string) error {
 	usage := errors.New(`usage:
   api institute create SLUG NAME OWNER_EMAIL
   api institute add-member SLUG EMAIL owner|admin|staff [grant,grant...]
@@ -177,6 +190,11 @@ func runInstitute(ctx context.Context, users auth.Store, tenants tenancy.AdminSt
 			return err
 		}
 		fmt.Printf("created institute %s (%s) with owner %s\n", created.Slug, created.ID, args[3])
+		if err := cliAudit(ctx, aw, "institute.created", "institute", created.ID, created.ID, map[string]any{"slug": created.Slug, "via": "cli"}); err != nil {
+			return err
+		}
+		return cliAudit(ctx, aw, "membership.created", "institute_membership", created.ID+":"+owner, created.ID,
+			map[string]any{"user_id": owner, "role": string(auth.InstituteOwner), "via": "cli"})
 	case "add-member":
 		if len(args) < 4 || len(args) > 5 {
 			return usage
@@ -195,6 +213,8 @@ func runInstitute(ctx context.Context, users auth.Store, tenants tenancy.AdminSt
 			return err
 		}
 		fmt.Printf("added %s to %s as %s\n", args[2], inst.Slug, args[3])
+		return cliAudit(ctx, aw, "membership.created", "institute_membership", inst.ID+":"+uid, inst.ID,
+			map[string]any{"user_id": uid, "role": args[3], "grants": grants, "via": "cli"})
 	case "remove-member":
 		if len(args) != 3 {
 			return usage
@@ -207,6 +227,8 @@ func runInstitute(ctx context.Context, users auth.Store, tenants tenancy.AdminSt
 			return err
 		}
 		fmt.Printf("removed %s from %s\n", args[2], inst.Slug)
+		return cliAudit(ctx, aw, "membership.removed", "institute_membership", inst.ID+":"+uid, inst.ID,
+			map[string]any{"user_id": uid, "via": "cli"})
 	case "status":
 		if len(args) != 3 {
 			return usage
@@ -215,8 +237,9 @@ func runInstitute(ctx context.Context, users auth.Store, tenants tenancy.AdminSt
 			return err
 		}
 		fmt.Printf("institute %s is now %s\n", inst.Slug, args[2])
+		return cliAudit(ctx, aw, "institute.status_changed", "institute", inst.ID, inst.ID,
+			map[string]any{"from": string(inst.Status), "to": args[2], "via": "cli"})
 	default:
 		return usage
 	}
-	return nil
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, ApiError, setActiveInstitute } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../../components/States';
@@ -63,7 +64,9 @@ export function WorkspaceView() {
       {state.status === 'error' && <ErrorState message={state.error.message} onRetry={retry} />}
       {state.status === 'success' && institutes.length === 0 && (
         <EmptyState title="No institute access">
-          <p>Your account is not a member of any institute yet. Ask an institute owner to add you.</p>
+          <p>Your account is not a member of any institute yet. Ask an institute owner to add you, or{' '}
+            <Link to="/apply">apply to register your own institute</Link>.
+          </p>
         </EmptyState>
       )}
       {institutes.length > 1 && (

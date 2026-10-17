@@ -19,6 +19,7 @@ type Store interface {
 type AdminStore interface {
 	CreateInstitute(ctx context.Context, slug, name string) (Institute, error)
 	InstituteBySlug(ctx context.Context, slug string) (Institute, error)
+	InstituteByID(ctx context.Context, id string) (Institute, error)
 	SetInstituteStatus(ctx context.Context, instituteID string, status InstituteStatus) error
 	AddMembership(ctx context.Context, instituteID, userID string, role auth.InstituteRole, grants []auth.Permission) (MemberView, error)
 	RemoveMembership(ctx context.Context, instituteID, userID string) error

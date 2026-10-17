@@ -35,6 +35,12 @@ func RunStoreContract(t *testing.T, newStore func(t *testing.T) (Store, func(ema
 		if err != nil || got.ID != a.ID {
 			t.Fatalf("by slug: %v", err)
 		}
+		if byID, err := s.InstituteByID(ctx, a.ID); err != nil || byID.Slug != "alpha-academy" {
+			t.Fatalf("by id: %v", err)
+		}
+		if _, err := s.InstituteByID(ctx, "00000000-0000-0000-0000-000000000000"); !errors.Is(err, tenancy.ErrNotFound) {
+			t.Fatalf("missing by id: %v", err)
+		}
 		if _, err := s.InstituteBySlug(ctx, "missing-one"); !errors.Is(err, tenancy.ErrNotFound) {
 			t.Fatalf("missing: %v", err)
 		}

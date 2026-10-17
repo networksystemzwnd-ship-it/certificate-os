@@ -13,3 +13,8 @@ main { padding: 1.5rem; max-width: 60rem; margin: 0 auto; }
 .session { margin-left: auto; font-size: .9rem; }
 label { font-weight: 600; }
 input { padding: .4rem; min-width: 18rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+table { border-collapse: collapse; width: 100%; background: #fff; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #ddd; vertical-align: top; }
+dl > div { display: flex; gap: 1rem; padding: .2rem 0; } dt { min-width: 14rem; font-weight: 600; } dd { margin: 0; }
+button[aria-pressed="true"] { font-weight: 700; text-decoration: underline; }

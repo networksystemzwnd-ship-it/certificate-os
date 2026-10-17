@@ -4,7 +4,11 @@ package pgstore
 import (
 	"context"
 	"errors"
+	"regexp"
+	"strings"
 
+	"github.com/certificate-os/api/internal/audit"
+	auditpg "github.com/certificate-os/api/internal/audit/pgstore"
 	"github.com/certificate-os/api/internal/auth"
 	"github.com/certificate-os/api/internal/tenancy"
 	"github.com/jackc/pgx/v5"
@@ -19,6 +23,7 @@ func New(pool *pgxpool.Pool) *Store { return &Store{Pool: pool} }
 var (
 	_ tenancy.Store      = (*Store)(nil)
 	_ tenancy.AdminStore = (*Store)(nil)
+	_ tenancy.OpsStore   = (*Store)(nil)
 )
 
 func pgCode(err error) string {
@@ -137,6 +142,19 @@ func (s *Store) InstituteBySlug(ctx context.Context, slug string) (tenancy.Insti
 	return i, err
 }
 
+func (s *Store) InstituteByID(ctx context.Context, id string) (tenancy.Institute, error) {
+	var i tenancy.Institute
+	var status string
+	err := s.Pool.QueryRow(ctx,
+		`SELECT id::text, slug, name, status, created_at FROM institutes WHERE id = $1::uuid`, id).
+		Scan(&i.ID, &i.Slug, &i.Name, &status, &i.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) || pgCode(err) == "22P02" { // 22P02: not a valid uuid
+		return tenancy.Institute{}, tenancy.ErrNotFound
+	}
+	i.Status = tenancy.InstituteStatus(status)
+	return i, err
+}
+
 func (s *Store) SetInstituteStatus(ctx context.Context, id string, st tenancy.InstituteStatus) error {
 	if !st.Valid() {
 		return errors.New("invalid institute status")
@@ -183,4 +201,76 @@ func (s *Store) RemoveMembership(ctx context.Context, instituteID, userID string
 		return tenancy.ErrNotFound
 	}
 	return nil
+}
+
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// likeEscape neutralizes LIKE wildcards in operator-typed search text.
+func likeEscape(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+func (s *Store) ListInstitutes(ctx context.Context, q string, limit, offset int) ([]tenancy.Institute, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT id::text, slug, name, status, created_at FROM institutes
+		 WHERE $1 = '' OR slug LIKE $2 ESCAPE '\' OR lower(name) LIKE $2 ESCAPE '\'
+		 ORDER BY slug LIMIT $3 OFFSET $4`, q, "%"+likeEscape(strings.ToLower(q))+"%", limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []tenancy.Institute{}
+	for rows.Next() {
+		var i tenancy.Institute
+		var st string
+		if err := rows.Scan(&i.ID, &i.Slug, &i.Name, &st, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		i.Status = tenancy.InstituteStatus(st)
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) ChangeInstituteStatus(ctx context.Context, id string, from []tenancy.InstituteStatus, to tenancy.InstituteStatus, ev audit.Event) (tenancy.Institute, error) {
+	var out tenancy.Institute
+	if !uuidRe.MatchString(id) {
+		return out, tenancy.ErrNotFound
+	}
+	if !to.Valid() {
+		return out, tenancy.ErrInvalidStatusChange
+	}
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return out, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var cur string
+	err = tx.QueryRow(ctx, `SELECT status FROM institutes WHERE id = $1::uuid FOR UPDATE`, id).Scan(&cur)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return out, tenancy.ErrNotFound
+	}
+	if err != nil {
+		return out, err
+	}
+	allowed := false
+	for _, f := range from {
+		allowed = allowed || string(f) == cur
+	}
+	if !allowed {
+		return out, tenancy.ErrInvalidStatusChange
+	}
+	var st string
+	if err := tx.QueryRow(ctx, `UPDATE institutes SET status = $2 WHERE id = $1::uuid RETURNING id::text, slug, name, status, created_at`,
+		id, string(to)).Scan(&out.ID, &out.Slug, &out.Name, &st, &out.CreatedAt); err != nil {
+		return tenancy.Institute{}, err
+	}
+	out.Status = tenancy.InstituteStatus(st)
+	if err := auditpg.InsertTx(ctx, tx, ev); err != nil {
+		return tenancy.Institute{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return tenancy.Institute{}, err
+	}
+	return out, nil
 }

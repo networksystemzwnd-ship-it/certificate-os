@@ -6,9 +6,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/certificate-os/api/internal/audit"
 	"github.com/certificate-os/api/internal/auth"
 	"github.com/certificate-os/api/internal/tenancy"
 )
@@ -23,6 +25,8 @@ type MemStore struct {
 	n          int
 	institutes map[string]*tenancy.Institute
 	members    []*member
+	// Audit, when set, receives the event of ChangeInstituteStatus (nothing is recorded on failure).
+	Audit audit.Writer
 }
 
 func NewMemStore() *MemStore { return &MemStore{institutes: map[string]*tenancy.Institute{}} }
@@ -30,7 +34,52 @@ func NewMemStore() *MemStore { return &MemStore{institutes: map[string]*tenancy.
 var (
 	_ tenancy.Store      = (*MemStore)(nil)
 	_ tenancy.AdminStore = (*MemStore)(nil)
+	_ tenancy.OpsStore   = (*MemStore)(nil)
 )
+
+func (m *MemStore) ListInstitutes(_ context.Context, q string, limit, offset int) ([]tenancy.Institute, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	q = strings.ToLower(q)
+	var all []tenancy.Institute
+	for _, i := range m.institutes {
+		if q == "" || strings.Contains(strings.ToLower(i.Name), q) || strings.Contains(i.Slug, q) {
+			all = append(all, *i)
+		}
+	}
+	sort.Slice(all, func(a, b int) bool { return all[a].Slug < all[b].Slug })
+	if offset > len(all) {
+		offset = len(all)
+	}
+	all = all[offset:]
+	if limit > 0 && limit < len(all) {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+func (m *MemStore) ChangeInstituteStatus(ctx context.Context, id string, from []tenancy.InstituteStatus, to tenancy.InstituteStatus, ev audit.Event) (tenancy.Institute, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	i, ok := m.institutes[id]
+	if !ok {
+		return tenancy.Institute{}, tenancy.ErrNotFound
+	}
+	allowed := false
+	for _, f := range from {
+		allowed = allowed || f == i.Status
+	}
+	if !allowed || !to.Valid() {
+		return tenancy.Institute{}, tenancy.ErrInvalidStatusChange
+	}
+	if m.Audit != nil {
+		if err := m.Audit.Record(ctx, ev); err != nil {
+			return tenancy.Institute{}, err
+		}
+	}
+	i.Status = to
+	return *i, nil
+}
 
 func (m *MemStore) next(prefix string) string { m.n++; return fmt.Sprintf("%s-%d", prefix, m.n) }
 
@@ -57,6 +106,15 @@ func (m *MemStore) InstituteBySlug(_ context.Context, slug string) (tenancy.Inst
 		if i.Slug == slug {
 			return *i, nil
 		}
+	}
+	return tenancy.Institute{}, tenancy.ErrNotFound
+}
+
+func (m *MemStore) InstituteByID(_ context.Context, id string) (tenancy.Institute, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if i, ok := m.institutes[id]; ok {
+		return *i, nil
 	}
 	return tenancy.Institute{}, tenancy.ErrNotFound
 }
