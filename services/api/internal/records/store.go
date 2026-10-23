@@ -38,6 +38,11 @@ type Store interface {
 	UpdateStudent(ctx context.Context, s tenancy.Scope, id string, in StudentInput, ev audit.Event) (Student, error)
 	SetStudentArchived(ctx context.Context, s tenancy.Scope, id string, archived bool, ev audit.Event) (Student, error)
 
+	// LookupStudents returns students (archived included, enrollments not loaded) whose student number
+	// (compared case-insensitively) is in numbers or whose email (lowercase) is in emails. Used by import
+	// duplicate detection; at most MaxLookupValues values per call.
+	LookupStudents(ctx context.Context, s tenancy.Scope, numbers, emails []string) ([]Student, error)
+
 	// AddEnrollment: student and batch must exist in this institute and be active; one enrollment
 	// per (student, batch) (*ConflictError{Field: "batch_id"}).
 	AddEnrollment(ctx context.Context, s tenancy.Scope, studentID, batchID string, ev audit.Event) (Enrollment, error)

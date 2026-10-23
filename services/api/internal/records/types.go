@@ -140,6 +140,9 @@ type BatchFilter struct {
 	CourseID string
 }
 
+// MaxLookupValues bounds the number of numbers+emails passed to Store.LookupStudents in one call.
+const MaxLookupValues = 500
+
 type StudentFilter struct {
 	Page
 	BatchID  string

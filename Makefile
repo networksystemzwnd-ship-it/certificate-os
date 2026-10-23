@@ -22,7 +22,7 @@ lint:
 	cd apps/web && npm run lint && npm run typecheck
 
 test:
-	cd services/api && go test ./...
+	cd services/api && go test -p 1 ./...
 	cd apps/web && npm test
 
 e2e:

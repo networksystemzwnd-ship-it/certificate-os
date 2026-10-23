@@ -538,6 +538,44 @@ func (s *Store) ListStudents(ctx context.Context, sc tenancy.Scope, f records.St
 	return out, err
 }
 
+func (s *Store) LookupStudents(ctx context.Context, sc tenancy.Scope, numbers, emails []string) ([]records.Student, error) {
+	out := []records.Student{}
+	if len(numbers)+len(emails) > records.MaxLookupValues {
+		return nil, errors.New("too many lookup values")
+	}
+	lower := func(in []string) []string {
+		r := make([]string, 0, len(in))
+		for _, v := range in {
+			if v != "" && !strings.ContainsRune(v, 0) {
+				r = append(r, strings.ToLower(v))
+			}
+		}
+		return r
+	}
+	numbers, emails = lower(numbers), lower(emails)
+	if len(numbers)+len(emails) == 0 {
+		return out, nil
+	}
+	err := s.tx(ctx, sc, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT `+studentCols+` FROM students
+			WHERE institute_id = $1::uuid AND (lower(student_number) = ANY($2::text[]) OR lower(email) = ANY($3::text[]))
+			ORDER BY id`, sc.InstituteID(), numbers, emails)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			st, err := scanStudent(rows)
+			if err != nil {
+				return err
+			}
+			out = append(out, st)
+		}
+		return rows.Err()
+	})
+	return out, err
+}
+
 func (s *Store) UpdateStudent(ctx context.Context, sc tenancy.Scope, id string, in records.StudentInput, ev audit.Event) (records.Student, error) {
 	if !okID(id) {
 		return records.Student{}, records.ErrNotFound

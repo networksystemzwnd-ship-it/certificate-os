@@ -171,6 +171,33 @@ func (s *Service) ArchiveStudent(ctx context.Context, t tenancy.Tenant, id strin
 	return s.Store.SetStudentArchived(ctx, t.Scope(), id, archived, event(t, action, "student", reqID, nil))
 }
 
+// LookupStudents finds existing students by student number or email, in chunks.
+func (s *Service) LookupStudents(ctx context.Context, t tenancy.Tenant, numbers, emails []string) ([]Student, error) {
+	var out []Student
+	seen := map[string]bool{}
+	for len(numbers) > 0 || len(emails) > 0 {
+		n, e := numbers, emails
+		if len(n) > MaxLookupValues {
+			n = n[:MaxLookupValues]
+		}
+		if room := MaxLookupValues - len(n); len(e) > room {
+			e = e[:room]
+		}
+		numbers, emails = numbers[len(n):], emails[len(e):]
+		got, err := s.Store.LookupStudents(ctx, t.Scope(), n, e)
+		if err != nil {
+			return nil, err
+		}
+		for _, st := range got {
+			if !seen[st.ID] {
+				seen[st.ID] = true
+				out = append(out, st)
+			}
+		}
+	}
+	return out, nil
+}
+
 // --- enrollments ---
 
 func (s *Service) Enroll(ctx context.Context, t tenancy.Tenant, studentID, batchID, reqID string) (Enrollment, error) {

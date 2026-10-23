@@ -28,6 +28,8 @@ import (
 	"github.com/certificate-os/api/internal/auth"
 	"github.com/certificate-os/api/internal/auth/authhttp"
 	"github.com/certificate-os/api/internal/auth/pgstore"
+	"github.com/certificate-os/api/internal/imports"
+	importspg "github.com/certificate-os/api/internal/imports/pgstore"
 	"github.com/certificate-os/api/internal/platform/config"
 	"github.com/certificate-os/api/internal/platform/health"
 	"github.com/certificate-os/api/internal/platform/httpx"
@@ -156,7 +158,9 @@ func run(args []string) error {
 	tenantStore := tenancypg.New(pool)
 	(&applications.Handler{Svc: applications.NewService(applicationspg.New(pool), auditStore), Log: log, Authn: authH.Authenticate}).Register(mux)
 	tenantH := &tenancy.Handler{Svc: &tenancy.Service{Store: tenantStore}, Log: log, Authn: authH.Authenticate}
-	(&records.Handler{Svc: records.NewService(recordspg.New(pool)), Log: log, Tenancy: tenantH}).Register(mux)
+	recordsSvc := records.NewService(recordspg.New(pool))
+	(&records.Handler{Svc: recordsSvc, Log: log, Tenancy: tenantH}).Register(mux)
+	(&imports.Handler{Svc: imports.NewService(importspg.New(pool), recordsSvc), Log: log, Tenancy: tenantH}).Register(mux)
 	(&tenancy.OpsHandler{Svc: &tenancy.OpsService{Store: tenantStore}, Log: log, Authn: authH.Authenticate}).Register(mux)
 	(&audit.Handler{Reader: auditStore, Log: log, Authn: authH.Authenticate}).Register(mux)
 	mux.HandleFunc("/", httpx.NotFound)

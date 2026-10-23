@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -259,6 +259,80 @@ paths:
         '200': { description: OK }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /api/v1/students/imports:
+    post:
+      summary: Upload a CSV for import (requires students.import)
+      description: >
+        multipart/form-data with a `file` field (CSV, UTF-8, up to 2 MB and 2000 rows; `;` and tab delimiters are
+        detected). Nothing is written to the student list. Returns the job with the headers, a suggested column
+        mapping and a preview. XLSX is not supported yet (422 with instructions).
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+      responses:
+        '201': { description: Created }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/students/imports/{iid}:
+    get:
+      summary: Import job with counts, preview rows and the first 100 row problems
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: iid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Cancel an unconfirmed import and discard its stored rows
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: iid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Cancelled }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/students/imports/{iid}/mapping:
+    put:
+      summary: Map columns and validate every row (still writes nothing to the student list)
+      description: >
+        Body `{mapping: {field: columnIndex}, date_format: iso|dmy|mdy}`. Fields: full_name (required), student_number,
+        email, phone, course, batch, status, completion_date, grade. Duplicates (same student number, or same name and
+        email, in the file or already stored, archived students included) are reported and never overwritten.
+        Can be repeated until confirmed.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: iid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/students/imports/{iid}/errors:
+    get:
+      summary: CSV report of rows that were not imported (row, result, problem, original cells)
+      description: Cells that spreadsheets would treat as formulas are prefixed with an apostrophe.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: iid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: text/csv attachment, content: { text/csv: { schema: { type: string } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/students/imports/{iid}/confirm:
+    post:
+      summary: Import the valid rows
+      description: >
+        Re-validates against current data, then saves rows one by one through the normal student rules (each with its
+        own audit event). A concurrent or repeated confirm gets 409; an interrupted confirm resumes after 5 minutes
+        without importing any row twice.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: iid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /api/v1/institute/members:
     get:
       summary: Members of the current institute (requires staff.manage)

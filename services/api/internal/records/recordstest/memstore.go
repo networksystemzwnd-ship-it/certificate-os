@@ -428,6 +428,29 @@ func (m *MemStore) ListStudents(_ context.Context, s tenancy.Scope, f records.St
 	return window(all, f.Page), nil
 }
 
+func (m *MemStore) LookupStudents(_ context.Context, s tenancy.Scope, numbers, emails []string) ([]records.Student, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := m.tenant(s)
+	nums, mails := map[string]bool{}, map[string]bool{}
+	for _, n := range numbers {
+		nums[strings.ToLower(n)] = true
+	}
+	for _, e := range emails {
+		mails[strings.ToLower(e)] = true
+	}
+	out := []records.Student{}
+	for _, st := range d.students {
+		if (st.StudentNumber != "" && nums[strings.ToLower(st.StudentNumber)]) || (st.Email != "" && mails[strings.ToLower(st.Email)]) {
+			c := *st
+			c.Enrollments = nil
+			out = append(out, c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
 func (m *MemStore) UpdateStudent(ctx context.Context, s tenancy.Scope, id string, in records.StudentInput, ev audit.Event) (records.Student, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

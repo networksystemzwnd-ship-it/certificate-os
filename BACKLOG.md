@@ -77,6 +77,18 @@ Template: see `PROJECT_BRAIN.md` §12.5.
 - Decision awaiting you: D-125 (completion date and grade live on the enrollment).
 - Not included: CSV/XLSX import and export, staff invitations (rest of M3).
 
+### M3b — Student import (CSV) — Built (needs your verification)
+- Priority: P0
+- Delivered: migration 0008 (`student_imports`, RLS); `imports` package (CSV parsing, column mapping, row validation, duplicate rules, confirm with progress/resume, error report); `GET/POST/PUT/DELETE /api/v1/students/imports...`; import wizard in the workspace ("Import students" tab, admin/owner).
+- Acceptance:
+  - [x] a realistic spreadsheet imports safely: row-level errors, duplicates skipped, explicit date format, enrolment with status/date/grade (service + HTTP tests, `-race`)
+  - [x] nothing written before confirm; confirm twice/concurrently refused; interrupted confirm resumes without duplicates
+  - [x] cross-tenant: other institutes get 404/403 on every import route; student numbers of one institute never make another's rows duplicates
+  - [x] migration 0008 SQL (insert/update/RLS/CHECK) verified on real PostgreSQL 16
+  - [ ] Postgres import store contract and `go test -p 1 ./...` with `TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL` (not run here)
+  - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox)
+- Not included: XLSX (D-130), export of students to CSV, scheduled purge of abandoned uploads, merge workflow.
+
 ### COS-009 — Institute application schema, state machine and audit log — Built (needs your verification)
 - Priority: P0
 - Delivered: migrations 0004 (audit_logs, append-only) and 0005 (institute_applications); `applications` domain + service; memory and Postgres stores sharing one contract; applicant API (`/api/v1/institute-applications`); audit events for every change; CLI actions audited.

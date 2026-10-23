@@ -4,6 +4,7 @@ import { api, ApiError, setActiveInstitute } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../../components/States';
 import { BatchesPage, CoursesPage, StudentsPage } from '../records/Records';
+import { ImportWizard } from '../records/ImportWizard';
 
 interface InstituteSummary {
   id: string;
@@ -17,8 +18,10 @@ interface InstituteDetail extends InstituteSummary {
   permissions?: string[];
 }
 
+type Tab = 'students' | 'courses' | 'batches' | 'import';
+
 function Detail({ id }: { id: string }) {
-  const [tab, setTab] = useState<'students' | 'courses' | 'batches'>('students');
+  const [tab, setTab] = useState<Tab>('students');
   const { state, retry } = useAsync(() => {
     setActiveInstitute(id); // the server still verifies membership on every request
     return api<{ institute: InstituteDetail }>('/api/v1/institute');
@@ -36,6 +39,7 @@ function Detail({ id }: { id: string }) {
   }
   const inst = state.data.institute;
   const can = (p: string) => inst.permissions?.includes(p) ?? false;
+  const tabs: Tab[] = ['students', 'courses', 'batches', ...(can('students.import') ? (['import'] as Tab[]) : [])];
   return (
     <section aria-labelledby="inst-name">
       <h2 id="inst-name">{inst.name}</h2>
@@ -48,9 +52,9 @@ function Detail({ id }: { id: string }) {
         </p>
       )}
       <nav aria-label="Institute sections">
-        {(['students', 'courses', 'batches'] as const).map((t) => (
+        {tabs.map((t) => (
           <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
+            {t === 'import' ? 'Import students' : t[0].toUpperCase() + t.slice(1)}
           </button>
         ))}
       </nav>
@@ -58,6 +62,7 @@ function Detail({ id }: { id: string }) {
       {tab === 'students' && <StudentsPage canWrite={can('students.write')} />}
       {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
       {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
+      {tab === 'import' && can('students.import') && <ImportWizard />}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { api } from '../../lib/api';
+import { api, apiText } from '../../lib/api';
 
 export interface Course { id: string; name: string; code: string; description: string; archived_at: string | null }
 export interface Batch { id: string; course_id: string; course_name: string; name: string; start_date: string; end_date: string; archived_at: string | null }
@@ -48,4 +48,32 @@ export const studentsApi = {
   enroll: (id: string, batch_id: string) => api<{ enrollment: Enrollment }>(`/api/v1/students/${id}/enrollments`, { method: 'POST', ...json({ batch_id }) }),
   updateEnrollment: (id: string, eid: string, b: Partial<Pick<Enrollment, 'status' | 'completion_date' | 'grade'>>) =>
     api<{ enrollment: Enrollment }>(`/api/v1/students/${id}/enrollments/${eid}`, { method: 'PATCH', ...json(b) }),
+};
+
+export interface ImportCounts { total: number; valid: number; errors: number; duplicates: number; imported: number; failed: number }
+export interface ImportJob {
+  id: string;
+  status: 'uploaded' | 'validated' | 'confirming' | 'completed' | 'cancelled';
+  filename: string;
+  headers: string[];
+  mapping: Record<string, number>;
+  suggested_mapping?: Record<string, number>;
+  date_format: 'iso' | 'dmy' | 'mdy';
+  counts: ImportCounts;
+  preview: { row: number; cells: string[]; state?: string; message?: string }[];
+  issues: { row: number; state: string; message: string }[];
+  issues_truncated: boolean;
+}
+
+export const importsApi = {
+  upload: (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return api<{ import: ImportJob }>('/api/v1/students/imports', { method: 'POST', body });
+  },
+  setMapping: (id: string, mapping: Record<string, number>, date_format: string) =>
+    api<{ import: ImportJob }>(`/api/v1/students/imports/${id}/mapping`, { method: 'PUT', ...json({ mapping, date_format }) }),
+  confirm: (id: string) => api<{ import: ImportJob }>(`/api/v1/students/imports/${id}/confirm`, { method: 'POST' }),
+  cancel: (id: string) => api<{ import: ImportJob }>(`/api/v1/students/imports/${id}`, { method: 'DELETE' }),
+  errorReport: (id: string) => apiText(`/api/v1/students/imports/${id}/errors`),
 };

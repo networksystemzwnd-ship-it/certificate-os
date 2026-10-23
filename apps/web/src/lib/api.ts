@@ -28,10 +28,11 @@ function newRequestId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-export async function api<T>(path: string, init: RequestInit = {}, baseUrl = BASE_URL): Promise<T> {
+async function request(path: string, init: RequestInit, baseUrl: string): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set('X-Request-ID', newRequestId());
-  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  // JSON by default; a FormData body (file upload) must keep the browser-generated multipart boundary.
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (activeInstitute) headers.set('X-Institute-ID', activeInstitute);
   // CSRF defence: the API requires this header on state-changing requests (cross-site forms cannot set it).
   const method = (init.method ?? 'GET').toUpperCase();
@@ -43,8 +44,7 @@ export async function api<T>(path: string, init: RequestInit = {}, baseUrl = BAS
   } catch {
     throw new ApiError(0, 'network_error', 'Could not reach the server. Check your connection and try again.');
   }
-
-  if (res.ok) return (res.status === 204 ? undefined : await res.json()) as T;
+  if (res.ok) return res;
 
   let body: { error?: { code?: string; message?: string; request_id?: string; details?: unknown } } = {};
   try {
@@ -60,4 +60,14 @@ export async function api<T>(path: string, init: RequestInit = {}, baseUrl = BAS
     e?.request_id ?? res.headers.get('X-Request-ID') ?? undefined,
     e?.details,
   );
+}
+
+export async function api<T>(path: string, init: RequestInit = {}, baseUrl = BASE_URL): Promise<T> {
+  const res = await request(path, init, baseUrl);
+  return (res.status === 204 ? undefined : await res.json()) as T;
+}
+
+/** For text downloads (e.g. the import error report): same headers, credentials and error handling as api(). */
+export async function apiText(path: string, init: RequestInit = {}, baseUrl = BASE_URL): Promise<string> {
+  return (await request(path, init, baseUrl)).text();
 }

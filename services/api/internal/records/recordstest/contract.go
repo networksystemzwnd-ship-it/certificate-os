@@ -69,6 +69,42 @@ func RunStoreContract(t *testing.T, newHarness func(t *testing.T) Harness) {
 		return st
 	}
 
+	t.Run("students: lookup by number or email is case-insensitive, includes archived, and never crosses institutes", func(t *testing.T) {
+		h := newHarness(t)
+		a, b := h.NewScope(), h.NewScope()
+		s1 := student(t, h, a, "Asha Rao", "ST-100")
+		_, err := h.Store.CreateStudent(ctx, a, records.StudentInput{FullName: "Ravi Kumar", Email: "ravi@example.com"}, ev("student.created", "student"))
+		must(t, err)
+		arch, err := h.Store.CreateStudent(ctx, a, records.StudentInput{FullName: "Old Student", StudentNumber: "ST-OLD"}, ev("student.created", "student"))
+		must(t, err)
+		_, err = h.Store.SetStudentArchived(ctx, a, arch.ID, true, ev("student.archived", "student"))
+		must(t, err)
+		student(t, h, b, "Other Tenant", "ST-100")
+
+		got, err := h.Store.LookupStudents(ctx, a, []string{"st-100", "ST-OLD", "NOPE"}, []string{"ravi@example.com", "nobody@example.com"})
+		must(t, err)
+		if len(got) != 3 {
+			t.Fatalf("want 3 matches (number, archived number, email), got %d: %+v", len(got), got)
+		}
+		found := map[string]bool{}
+		for _, st := range got {
+			found[st.ID] = true
+		}
+		if !found[s1.ID] || !found[arch.ID] {
+			t.Fatalf("missing expected students: %+v", got)
+		}
+		none, err := h.Store.LookupStudents(ctx, a, nil, nil)
+		must(t, err)
+		if len(none) != 0 {
+			t.Fatalf("empty lookup returned %d rows", len(none))
+		}
+		onlyB, err := h.Store.LookupStudents(ctx, b, []string{"ST-100"}, nil)
+		must(t, err)
+		if len(onlyB) != 1 || onlyB[0].FullName != "Other Tenant" {
+			t.Fatalf("institute B must only see its own student: %+v", onlyB)
+		}
+	})
+
 	t.Run("courses: create, read, uniqueness, archive and restore", func(t *testing.T) {
 		h := newHarness(t)
 		a := h.NewScope()
