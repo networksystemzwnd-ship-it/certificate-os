@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, ApiError, setActiveInstitute } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../../components/States';
+import { BatchesPage, CoursesPage, StudentsPage } from '../records/Records';
 
 interface InstituteSummary {
   id: string;
@@ -17,6 +18,7 @@ interface InstituteDetail extends InstituteSummary {
 }
 
 function Detail({ id }: { id: string }) {
+  const [tab, setTab] = useState<'students' | 'courses' | 'batches'>('students');
   const { state, retry } = useAsync(() => {
     setActiveInstitute(id); // the server still verifies membership on every request
     return api<{ institute: InstituteDetail }>('/api/v1/institute');
@@ -33,6 +35,7 @@ function Detail({ id }: { id: string }) {
     );
   }
   const inst = state.data.institute;
+  const can = (p: string) => inst.permissions?.includes(p) ?? false;
   return (
     <section aria-labelledby="inst-name">
       <h2 id="inst-name">{inst.name}</h2>
@@ -44,6 +47,17 @@ function Detail({ id }: { id: string }) {
           This institute is <strong>{inst.status}</strong>. Access is read-only.
         </p>
       )}
+      <nav aria-label="Institute sections">
+        {(['students', 'courses', 'batches'] as const).map((t) => (
+          <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)}>
+            {t[0].toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+      </nav>
+      {/* Write actions are shown only when the server granted the capability; the API enforces it regardless. */}
+      {tab === 'students' && <StudentsPage canWrite={can('students.write')} />}
+      {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
+      {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
     </section>
   );
 }

@@ -33,8 +33,11 @@ Seed tenants: **Demo Institute** (`owner@`, `admin@`, `staff@`, `multi@` as staf
 `owner@` and `owner2@` can see. Manage institutes out-of-band with `docker compose exec api /api institute ...`.
 Grant roles out-of-band: `docker compose exec api /api user grant-platform-role EMAIL ops`.
 
+## Database roles (row-level security)
+The API connects as the restricted login role `certos_app` (member of `certos_runtime`; no DELETE, append-only audit log, row-level security on every tenant table). Migrations and role provisioning use the owner connection `MIGRATE_DATABASE_URL`. In development `MIGRATE_ON_START=true` does both automatically; elsewhere run `api migrate up` then `api db provision-runtime-role` with the owner URL. **If you already have a local database from an earlier version, run `docker compose down -v` once** so the new roles are created cleanly. In production the API refuses to start if its role is a superuser or bypasses RLS (ADR-001).
+
 ## Tests
-`make test` · `make lint`. Migration integration tests run when `TEST_DATABASE_URL` points to a disposable Postgres.
+`make test` · `make lint`. Postgres integration tests run when `TEST_DATABASE_URL` (owner) points to a disposable Postgres; set `TEST_APP_DATABASE_URL` (the `certos_app` login) as well so the store contracts run under row-level security.
 
 ## Troubleshooting
 - API exits at start: check `.env` (missing `DATABASE_URL` fails by design).

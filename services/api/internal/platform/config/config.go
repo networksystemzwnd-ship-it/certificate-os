@@ -15,7 +15,10 @@ type Config struct {
 	Env            string // development | test | production
 	Port           int
 	LogLevel       string
-	DatabaseURL    string
+	DatabaseURL    string // runtime connection: MUST be a restricted role in production (ADR-001)
+	MigrateURL     string // owner connection used only for migrations and role provisioning
+	AppDBUser      string // login role created by `api db provision-runtime-role`
+	AppDBPassword  string // used only by provisioning; never logged
 	MigrateOnStart bool
 	WebOrigin      string        // the single allowed browser origin (CORS/CSRF), e.g. http://localhost:5173
 	SessionTTL     time.Duration // absolute session lifetime
@@ -73,6 +76,15 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	if cfg.DatabaseURL == "" {
 		errs = append(errs, errors.New("DATABASE_URL is required"))
 	}
+	cfg.MigrateURL = get("MIGRATE_DATABASE_URL", cfg.DatabaseURL)
+	cfg.AppDBUser = get("APP_DB_USER", "certos_app")
+	cfg.AppDBPassword = get("APP_DB_PASSWORD", "")
+	if !ValidRoleName(cfg.AppDBUser) {
+		errs = append(errs, errors.New("APP_DB_USER must be 3-40 characters: lowercase letters, digits and underscores, starting with a letter"))
+	}
+	if cfg.Env == "production" && (cfg.MigrateURL == cfg.DatabaseURL) {
+		errs = append(errs, errors.New("MIGRATE_DATABASE_URL must be set to the owner connection and differ from DATABASE_URL in production (the runtime role must not own the schema)"))
+	}
 	if cfg.Env == "production" && cfg.MigrateOnStart {
 		errs = append(errs, errors.New("MIGRATE_ON_START must not be enabled in production; run migrations as a reviewed step"))
 	}
@@ -81,4 +93,17 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, errors.Join(errs...)
 	}
 	return cfg, nil
+}
+
+// ValidRoleName reports whether s is a safe PostgreSQL role name for the provisioning command.
+func ValidRoleName(s string) bool {
+	if len(s) < 3 || len(s) > 40 || s[0] < 'a' || s[0] > 'z' {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
+			return false
+		}
+	}
+	return true
 }

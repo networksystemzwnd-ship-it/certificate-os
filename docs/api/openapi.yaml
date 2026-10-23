@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -62,6 +62,203 @@ paths:
         '400': { description: institute_required (several memberships, no header), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '401': { $ref: '#/components/responses/Error' }
         '403': { description: Not a member (identical for non-existent institutes), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/v1/courses:
+    get:
+      summary: List courses (requires courses.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: q, in: query, schema: { type: string }, description: Case-insensitive search }
+        - { name: archived, in: query, schema: { type: string, enum: [only, all] }, description: Default lists active records only }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+      responses:
+        '200': { description: "OK: {courses: [...], has_more, limit, offset}" }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Create a course (requires courses.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/courses/{id}:
+    get:
+      summary: Get a course
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Update course fields (requires courses.write; unknown fields rejected)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Archive a course (never hard-deleted; requires courses.write); blocked with 409 while it has active batches
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Archived (idempotent) }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/courses/{id}/restore:
+    post:
+      summary: Restore an archived course (requires courses.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/batches:
+    get:
+      summary: List batches (requires courses.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: q, in: query, schema: { type: string }, description: Case-insensitive search }
+        - { name: archived, in: query, schema: { type: string, enum: [only, all] }, description: Default lists active records only }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: course_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: "OK: {batches: [...], has_more, limit, offset}" }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Create a batch (requires courses.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/batches/{id}:
+    get:
+      summary: Get a batch
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Update batch fields (requires courses.write; unknown fields rejected)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Archive a batch (never hard-deleted; requires courses.write); blocked with 409 while it has active enrollments
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Archived (idempotent) }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/batches/{id}/restore:
+    post:
+      summary: Restore an archived batch (requires courses.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/students:
+    get:
+      summary: List students (requires students.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: q, in: query, schema: { type: string }, description: Case-insensitive search }
+        - { name: archived, in: query, schema: { type: string, enum: [only, all] }, description: Default lists active records only }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: course_id, in: query, schema: { type: string, format: uuid } }
+        - { name: batch_id, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string, enum: [enrolled, completed, withdrawn] } }
+      responses:
+        '200': { description: "OK: {students: [...], has_more, limit, offset}" }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Create a student (requires students.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '201': { description: Created }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/students/{id}:
+    get:
+      summary: Get a student
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Update student fields (requires students.write; unknown fields rejected)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Archive a student (never hard-deleted; requires students.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: Archived (idempotent) }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/students/{id}/restore:
+    post:
+      summary: Restore an archived student (requires students.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/students/{id}/enrollments:
+    post:
+      summary: Enroll a student in a batch (requires students.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }]
+      responses:
+        '201': { description: Created }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Already enrolled in this batch, or the batch/student is archived, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/v1/students/{id}/enrollments/{eid}:
+    patch:
+      summary: Change enrollment status, completion date and grade (requires students.write)
+      description: completion_date/grade live on the enrollment (D-125); leaving "completed" clears the completion date unless one is sent.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { $ref: '#/components/parameters/Id' }, { name: eid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /api/v1/institute/members:
     get:
       summary: Members of the current institute (requires staff.manage)

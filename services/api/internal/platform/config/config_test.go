@@ -60,7 +60,7 @@ func TestWebOriginAndSessionDefaultsAndValidation(t *testing.T) {
 }
 
 func TestProductionRequiresHTTPSOriginAndSecureCookies(t *testing.T) {
-	base := map[string]string{"DATABASE_URL": "postgres://x", "APP_ENV": "production"}
+	base := map[string]string{"DATABASE_URL": "postgres://x", "MIGRATE_DATABASE_URL": "postgres://owner", "APP_ENV": "production"}
 	if _, err := Load(lookupFrom(base)); err == nil {
 		t.Fatal("production with default http origin must fail")
 	}
@@ -68,5 +68,37 @@ func TestProductionRequiresHTTPSOriginAndSecureCookies(t *testing.T) {
 	cfg, err := Load(lookupFrom(base))
 	if err != nil || !cfg.CookieSecure || cfg.WebOrigin != "https://app.example.com" {
 		t.Fatalf("%+v %v", cfg, err)
+	}
+}
+
+func TestMigrateURLDefaultsAndProductionRequiresSeparateOwner(t *testing.T) {
+	cfg, err := Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://app"}))
+	if err != nil || cfg.MigrateURL != "postgres://app" || cfg.AppDBUser != "certos_app" {
+		t.Fatalf("dev defaults: %+v %v", cfg, err)
+	}
+	prod := map[string]string{"APP_ENV": "production", "WEB_ORIGIN": "https://app.example.com", "DATABASE_URL": "postgres://app"}
+	if _, err := Load(lookupFrom(prod)); err == nil || !strings.Contains(err.Error(), "MIGRATE_DATABASE_URL") {
+		t.Fatalf("production without owner URL must fail, got %v", err)
+	}
+	prod["MIGRATE_DATABASE_URL"] = "postgres://app"
+	if _, err := Load(lookupFrom(prod)); err == nil {
+		t.Fatal("owner URL equal to runtime URL must fail in production")
+	}
+	prod["MIGRATE_DATABASE_URL"] = "postgres://owner"
+	if cfg, err := Load(lookupFrom(prod)); err != nil || cfg.MigrateURL != "postgres://owner" {
+		t.Fatalf("valid production config rejected: %v", err)
+	}
+}
+
+func TestValidRoleName(t *testing.T) {
+	for _, ok := range []string{"certos_app", "app_1", "abc"} {
+		if !ValidRoleName(ok) {
+			t.Errorf("%q should be valid", ok)
+		}
+	}
+	for _, bad := range []string{"", "ab", "1abc", "Certos", "a-b-c", `x"; DROP ROLE y; --`, "postgres user", strings.Repeat("a", 41)} {
+		if ValidRoleName(bad) {
+			t.Errorf("%q should be invalid", bad)
+		}
 	}
 }

@@ -56,15 +56,26 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests run (needs npm install)
 - Decisions: D-114 confirmed by product owner (suspended = read-only, exports blocked); ADR-001 Accepted.
 - Not included: invitations, role changes, institute profile edits (M3); RLS (ADR-001).
-### COS-RLS — Row-level security + restricted runtime role — Proposed (BLOCKS M3)
+### COS-RLS — Row-level security + restricted runtime role — Built (needs your Postgres verification)
 - Priority: P0
-- Goal: implement ADR-001's production gate with the first tenant-owned table; no tenant-owned table merges without it.
+- Delivered: migration 0006 (`certos_runtime` group role + least-privilege grants), `api db provision-runtime-role`, owner vs runtime connections (`MIGRATE_DATABASE_URL` / `DATABASE_URL`), startup guard (production refuses a superuser/BYPASSRLS runtime role), `tenantdb.WithTenant`, table-classification test (`TestEveryTableIsClassified`) so a new table cannot ship without RLS or an explicit global-table entry.
 - Acceptance:
-  - [ ] restricted non-superuser runtime role used by API/worker; owner role only for migrations
-  - [ ] ENABLE + FORCE RLS and fail-closed policies on every tenant-owned table
-  - [ ] all tenant repositories run inside `tenantdb.WithTenant`
-  - [ ] integration test: scope A cannot read/write B even with the application filter removed
-  - [ ] runtime role cannot UPDATE/DELETE/TRUNCATE `audit_logs`
+  - [x] restricted non-superuser runtime role used by API; owner role only for migrations (code + startup guard)
+  - [x] ENABLE + FORCE RLS and fail-closed policies on every tenant-owned table (migration 0007; verified with hand-run SQL on real PostgreSQL 16: unfiltered reads/updates confined, cross-institute insert rejected by policy, cross-tenant FK rejected, no setting => zero rows, DELETE denied)
+  - [x] all tenant repositories run inside `tenantdb.WithTenant`
+  - [ ] Go integration test "filter deliberately removed" (`TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL`) — written, not run here (pgx unavailable in the build sandbox); run `go test ./...` with both set
+  - [x] runtime role cannot UPDATE/DELETE/TRUNCATE `audit_logs` (real PostgreSQL 16)
+
+### M3a — Courses, batches, students, enrollments — Built (needs your verification)
+- Priority: P0
+- Delivered: migration 0007; `records` domain, service, memory + Postgres stores sharing one contract; REST API under `/api/v1/{courses,batches,students}` with permission guards, audit events and cross-tenant HTTP tests; React Students / Courses / Batches tabs in the institute workspace.
+- Acceptance:
+  - [x] store contract (CRUD, search, pagination, archive rules, enrollments, isolation) passes on the memory store under `-race`
+  - [x] HTTP tests: 401/403, read-only roles, suspended institute, cross-tenant 404s, audit contains no personal data
+  - [ ] Postgres store contract run against a real database (`go test ./...` with `TEST_DATABASE_URL`, `TEST_APP_DATABASE_URL`)
+  - [ ] frontend `npm test`, `npm run lint`, `npm run typecheck` (needs npm install; never run in the build sandbox)
+- Decision awaiting you: D-125 (completion date and grade live on the enrollment).
+- Not included: CSV/XLSX import and export, staff invitations (rest of M3).
 
 ### COS-009 — Institute application schema, state machine and audit log — Built (needs your verification)
 - Priority: P0
