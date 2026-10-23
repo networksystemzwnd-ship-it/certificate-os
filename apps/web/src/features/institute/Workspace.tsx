@@ -5,6 +5,8 @@ import { useAsync } from '../../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../../components/States';
 import { BatchesPage, CoursesPage, StudentsPage } from '../records/Records';
 import { ImportWizard } from '../records/ImportWizard';
+import { StaffPage } from '../staff/Staff';
+import { useSession } from '../auth/session';
 
 interface InstituteSummary {
   id: string;
@@ -18,9 +20,10 @@ interface InstituteDetail extends InstituteSummary {
   permissions?: string[];
 }
 
-type Tab = 'students' | 'courses' | 'batches' | 'import';
+type Tab = 'students' | 'courses' | 'batches' | 'import' | 'staff';
 
 function Detail({ id }: { id: string }) {
+  const { user } = useSession();
   const [tab, setTab] = useState<Tab>('students');
   const { state, retry } = useAsync(() => {
     setActiveInstitute(id); // the server still verifies membership on every request
@@ -39,7 +42,7 @@ function Detail({ id }: { id: string }) {
   }
   const inst = state.data.institute;
   const can = (p: string) => inst.permissions?.includes(p) ?? false;
-  const tabs: Tab[] = ['students', 'courses', 'batches', ...(can('students.import') ? (['import'] as Tab[]) : [])];
+  const tabs: Tab[] = ['students', 'courses', 'batches', ...(can('students.import') ? (['import'] as Tab[]) : []), ...(can('staff.manage') ? (['staff'] as Tab[]) : [])];
   return (
     <section aria-labelledby="inst-name">
       <h2 id="inst-name">{inst.name}</h2>
@@ -63,6 +66,7 @@ function Detail({ id }: { id: string }) {
       {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
       {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
       {tab === 'import' && can('students.import') && <ImportWizard />}
+      {tab === 'staff' && can('staff.manage') && <StaffPage selfEmail={user?.email} />}
     </section>
   );
 }

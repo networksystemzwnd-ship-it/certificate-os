@@ -54,10 +54,11 @@ type MembershipView struct {
 	Grants       []auth.Permission
 }
 
-// MemberView is a row of an institute's staff list. Emails arrive with the staff UI (M3).
+// MemberView is a row of an institute's staff list.
 type MemberView struct {
 	MembershipID string
 	UserID       string
+	Email        string
 	Role         auth.InstituteRole
 	Grants       []auth.Permission
 	Status       MembershipStatus

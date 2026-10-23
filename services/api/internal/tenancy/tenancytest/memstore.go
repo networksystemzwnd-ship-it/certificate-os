@@ -27,6 +27,8 @@ type MemStore struct {
 	members    []*member
 	// Audit, when set, receives the event of ChangeInstituteStatus (nothing is recorded on failure).
 	Audit audit.Writer
+	// EmailOf, when set, supplies member emails (the Postgres store joins the users table).
+	EmailOf func(userID string) string
 }
 
 func NewMemStore() *MemStore { return &MemStore{institutes: map[string]*tenancy.Institute{}} }
@@ -195,8 +197,55 @@ func (m *MemStore) ListMembers(_ context.Context, s tenancy.Scope) ([]tenancy.Me
 	var out []tenancy.MemberView
 	for _, x := range m.members {
 		if x.instituteID == s.InstituteID() {
-			out = append(out, x.MemberView)
+			v := x.MemberView
+			if m.EmailOf != nil {
+				v.Email = m.EmailOf(v.UserID)
+			}
+			out = append(out, v)
 		}
 	}
 	return out, nil
+}
+
+// --- helpers for the staff (invitation / member management) test store ---
+
+// MemberByID returns an institute's membership by id (any status).
+func (m *MemStore) MemberByID(instituteID, membershipID string) (tenancy.MemberView, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.members {
+		if x.instituteID == instituteID && x.MembershipID == membershipID {
+			return x.MemberView, true
+		}
+	}
+	return tenancy.MemberView{}, false
+}
+
+// MemberByUser returns the membership of a user in an institute (any status).
+func (m *MemStore) MemberByUser(instituteID, userID string) (tenancy.MemberView, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.members {
+		if x.instituteID == instituteID && x.UserID == userID {
+			return x.MemberView, true
+		}
+	}
+	return tenancy.MemberView{}, false
+}
+
+// UpdateMember sets role, grants and status of an existing membership.
+func (m *MemStore) UpdateMember(instituteID, membershipID string, role auth.InstituteRole, grants []auth.Permission, status tenancy.MembershipStatus) (tenancy.MemberView, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.members {
+		if x.instituteID == instituteID && x.MembershipID == membershipID {
+			x.Role, x.Grants, x.Status = role, append([]auth.Permission(nil), grants...), status
+			v := x.MemberView
+			if m.EmailOf != nil {
+				v.Email = m.EmailOf(v.UserID)
+			}
+			return v, nil
+		}
+	}
+	return tenancy.MemberView{}, tenancy.ErrNotFound
 }

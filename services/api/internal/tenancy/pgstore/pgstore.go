@@ -91,8 +91,9 @@ func (s *Store) GetInstitute(ctx context.Context, scope tenancy.Scope) (tenancy.
 
 func (s *Store) ListMembers(ctx context.Context, scope tenancy.Scope) ([]tenancy.MemberView, error) {
 	rows, err := s.Pool.Query(ctx,
-		`SELECT id::text, user_id::text, role, grants, status
-		 FROM institute_memberships WHERE institute_id = $1::uuid ORDER BY created_at, id`, scope.InstituteID())
+		`SELECT m.id::text, m.user_id::text, u.email, m.role, m.grants, m.status
+		 FROM institute_memberships m JOIN users u ON u.id = m.user_id
+		 WHERE m.institute_id = $1::uuid ORDER BY m.created_at, m.id`, scope.InstituteID())
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +103,7 @@ func (s *Store) ListMembers(ctx context.Context, scope tenancy.Scope) ([]tenancy
 		var m tenancy.MemberView
 		var role, status string
 		var grants []string
-		if err := rows.Scan(&m.MembershipID, &m.UserID, &role, &grants, &status); err != nil {
+		if err := rows.Scan(&m.MembershipID, &m.UserID, &m.Email, &role, &grants, &status); err != nil {
 			return nil, err
 		}
 		m.Role, m.Grants, m.Status = auth.InstituteRole(role), toGrants(grants), tenancy.MembershipStatus(status)

@@ -37,6 +37,8 @@ import (
 	"github.com/certificate-os/api/internal/platform/tenantdb"
 	"github.com/certificate-os/api/internal/records"
 	recordspg "github.com/certificate-os/api/internal/records/pgstore"
+	"github.com/certificate-os/api/internal/staff"
+	staffpg "github.com/certificate-os/api/internal/staff/pgstore"
 	"github.com/certificate-os/api/internal/tenancy"
 	tenancypg "github.com/certificate-os/api/internal/tenancy/pgstore"
 	"github.com/certificate-os/api/migrations"
@@ -161,6 +163,8 @@ func run(args []string) error {
 	recordsSvc := records.NewService(recordspg.New(pool))
 	(&records.Handler{Svc: recordsSvc, Log: log, Tenancy: tenantH}).Register(mux)
 	(&imports.Handler{Svc: imports.NewService(importspg.New(pool), recordsSvc), Log: log, Tenancy: tenantH}).Register(mux)
+	staffStore := staffpg.New(pool)
+	staff.NewHandler(staff.NewService(staffStore, staffStore), log, tenantH).Register(mux)
 	(&tenancy.OpsHandler{Svc: &tenancy.OpsService{Store: tenantStore}, Log: log, Authn: authH.Authenticate}).Register(mux)
 	(&audit.Handler{Reader: auditStore, Log: log, Authn: authH.Authenticate}).Register(mux)
 	mux.HandleFunc("/", httpx.NotFound)

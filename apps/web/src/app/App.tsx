@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { SessionProvider } from '../features/auth/session';
+import { AcceptInvite } from '../features/staff/AcceptInvite';
 import { Apply, Home, Login, NotFoundPage, Operations, Register, Workspace } from '../routes/pages';
 
 export function App() {
@@ -13,6 +14,7 @@ export function App() {
           <Route path="register" element={<Register />} />
           <Route path="app/*" element={<Workspace />} />
           <Route path="apply" element={<Apply />} />
+          <Route path="accept-invite" element={<AcceptInvite />} />
           <Route path="ops/*" element={<Operations />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

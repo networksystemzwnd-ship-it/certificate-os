@@ -116,6 +116,7 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 	type dto struct {
 		ID     string            `json:"id"`
 		UserID string            `json:"user_id"`
+		Email  string            `json:"email"`
 		Role   string            `json:"role"`
 		Grants []auth.Permission `json:"grants"`
 		Status string            `json:"status"`
@@ -126,7 +127,7 @@ func (h *Handler) members(w http.ResponseWriter, r *http.Request) {
 		if g == nil {
 			g = []auth.Permission{}
 		}
-		out = append(out, dto{ID: m.MembershipID, UserID: m.UserID, Role: string(m.Role), Grants: g, Status: string(m.Status)})
+		out = append(out, dto{ID: m.MembershipID, UserID: m.UserID, Email: m.Email, Role: string(m.Role), Grants: g, Status: string(m.Status)})
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"members": out})
 }

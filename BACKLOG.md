@@ -89,6 +89,18 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox)
 - Not included: XLSX (D-130), export of students to CSV, scheduled purge of abandoned uploads, merge workflow.
 
+### M3c — Staff invitations and member management — Built (needs your verification)
+- Priority: P0
+- Delivered: migration 0009 (`institute_invitations`, global table, D-137); `staff` package (invite, list, revoke, accept, change member, remove member) with memory and Postgres stores sharing one contract; owner-only Staff tab; `/accept-invite` page with login/registration detour; audit events `invitation.created/revoked/accepted`, `member.role_changed/removed` (ids, role names and grants only, never emails or tokens).
+- Acceptance:
+  - [x] token never stored or logged (hash only) and never listed; shown once; link works only for the invited email on an active institute; every refusal identical (HTTP tests)
+  - [x] owners/self protected, roles limited, grants validated, pending limit, expiry replacement, reactivation (contract + HTTP tests, `-race`; mutation-checked)
+  - [x] cross-tenant: other institutes get 404/403 on invitation and member routes
+  - [x] migration 0009 constraints verified on real PostgreSQL 16 (unique pending email, unique hash, role/grant/state CHECKs, runtime-role privileges)
+  - [ ] Postgres staff store contract with `TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL` (type-checked against a stub only; never run here)
+  - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox)
+- Not included: sending the invitation by email (needs the notification worker), resending (revoke and create again), transferring ownership, institute profile edits.
+
 ### COS-009 — Institute application schema, state machine and audit log — Built (needs your verification)
 - Priority: P0
 - Delivered: migrations 0004 (audit_logs, append-only) and 0005 (institute_applications); `applications` domain + service; memory and Postgres stores sharing one contract; applicant API (`/api/v1/institute-applications`); audit events for every change; CLI actions audited.

@@ -20,6 +20,8 @@ import (
 var globalTables = map[string]bool{
 	"schema_migrations": true, "users": true, "sessions": true, "institutes": true,
 	"institute_memberships": true, "institute_applications": true, "audit_logs": true,
+	// institute_invitations: accepted before the invitee has a tenant context (see migration 0009).
+	"institute_invitations": true,
 }
 
 func testPool(t *testing.T) *pgxpool.Pool {

@@ -102,6 +102,15 @@ func NewFixture(t *testing.T, extra func(f *Fixture)) *Fixture {
 	}
 	_ = store.SetPlatformRole(ctx, f.ids["ops@t.test"], auth.PlatformOps)
 
+	f.Tenants.EmailOf = func(userID string) string {
+		for e, id := range f.ids {
+			if id == userID {
+				return e
+			}
+		}
+		return ""
+	}
+
 	f.Mux = http.NewServeMux()
 	f.AuthH.Register(f.Mux)
 	f.TenantH.Register(f.Mux)

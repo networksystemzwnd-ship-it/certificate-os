@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -335,7 +335,7 @@ paths:
         '409': { $ref: '#/components/responses/Error' }
   /api/v1/institute/members:
     get:
-      summary: Members of the current institute (requires staff.manage)
+      summary: Members of the current institute, with their email (requires staff.manage)
       security: [{ cookieAuth: [] }]
       parameters: [{ $ref: '#/components/parameters/InstituteId' }]
       responses:
@@ -343,6 +343,87 @@ paths:
         '400': { $ref: '#/components/responses/Error' }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
+  /api/v1/institute/members/{mid}:
+    patch:
+      summary: Change a member's role (admin or staff) and extra grants (requires staff.manage)
+      description: Owners and your own membership cannot be changed (409). Admins cannot have grants. Grants are validated (422).
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: mid, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [role], properties: { role: { type: string, enum: [admin, staff] }, grants: { type: array, items: { type: string } } } }
+      responses:
+        '200': { description: "OK: {member}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Remove a member (soft, status becomes removed and access ends immediately) (requires staff.manage)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: mid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {removed: true}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Owner or own membership, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/v1/institute/invitations:
+    post:
+      summary: Invite someone by email as admin or staff (requires staff.manage)
+      description: >
+        Returns the invitation plus a one-time `token` and `accept_path` (`/accept-invite#token=...`). The token is
+        shown only in this response; only its SHA-256 hash is stored. No email is sent yet: the owner hands the link
+        over. Valid for 7 days, usable only by the invited email address. One live pending invitation per email;
+        at most 50 pending per institute.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email, role], properties: { email: { type: string, format: email }, role: { type: string, enum: [admin, staff] }, grants: { type: array, items: { type: string } } } }
+      responses:
+        '201': { description: "Created: {invitation, token, accept_path}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { description: Already invited, already a member, or too many pending, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+    get:
+      summary: Invitations of the current institute, newest first; never includes tokens (requires staff.manage)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '200': { description: "OK: {invitations: [...]}; status is pending, accepted, revoked or expired" }
+        '403': { $ref: '#/components/responses/Error' }
+  /api/v1/institute/invitations/{iid}:
+    delete:
+      summary: Revoke a pending invitation (requires staff.manage)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: iid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {invitation}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Not pending, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /api/v1/invitations/accept:
+    post:
+      summary: Accept an invitation (signed-in user whose email matches the invitation)
+      description: >
+        Body `{token}`. Every failure (unknown, expired, revoked, already used, different account, suspended or closed
+        institute) is the same 404, so the endpoint reveals nothing. A removed membership is reactivated. Rate limited
+        per user and per IP (429). Does not use X-Institute-ID: the invitee has no tenant context yet.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [token], properties: { token: { type: string } } }
+      responses:
+        '200': { description: "OK: {institute: {id, slug, name}, role}" }
+        '401': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /api/v1/institute-applications:
     post:
       summary: Start an application (draft). Any subset of fields; provided fields are validated. One open application per user.

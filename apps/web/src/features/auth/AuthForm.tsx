@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ApiError } from '../../lib/api';
 import { ErrorState } from '../../components/States';
 import { fieldErrors, useSession } from './session';
+import { hasPendingInvite } from '../staff/AcceptInvite';
 
 export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   const { login, register } = useSession();
@@ -21,7 +22,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
     setError(null);
     try {
       await (isLogin ? login : register)(email, password);
-      navigate('/app');
+      navigate(hasPendingInvite() ? '/accept-invite' : '/app'); // an invitation link survives the login detour
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Something went wrong.'));
     } finally {
