@@ -23,6 +23,8 @@ var (
 	// ErrRenderUnavailable: no PDF renderer is configured, so nothing can be issued (nothing is written).
 	ErrRenderUnavailable = errors.New("certificate rendering is not available")
 	ErrRenderFailed      = errors.New("certificate rendering failed")
+	// ErrReplacing: a replacement of this certificate is already being made.
+	ErrReplacing = errors.New("a replacement is already in progress")
 )
 
 // StalePendingAfter is how long a pending certificate may block its enrollment before a new attempt
@@ -141,7 +143,16 @@ type Certificate struct {
 	Failure              string
 	RevokedAt            *time.Time
 	RevokeReason         string
+	// Replacement (M5a): a corrected certificate points back to the one it replaces; completing it revokes the old
+	// one and links it forward. ReplacedByPublicID lets the public page point to the new certificate.
+	ReplacesID         string
+	ReplacedByID       string
+	ReplacedByPublicID string
+	ReplaceReason      string
 }
+
+// Replaced reports whether this certificate was superseded by a newer one.
+func (c Certificate) Replaced() bool { return c.ReplacedByID != "" }
 
 // PDF is a stored certificate file.
 type PDF struct {
@@ -157,6 +168,11 @@ type BeginInput struct {
 	PublicID                 string
 	IssuedBy                 string
 	Now                      time.Time
+	// Replaces makes this a replacement of an ISSUED certificate of the same enrollment (ErrState otherwise).
+	// The old certificate stays valid until Complete stores the new PDF; Complete then revokes it with
+	// ReplaceReason and links it to the new one in one transaction.
+	Replaces      string
+	ReplaceReason string
 }
 
 type Filter struct {

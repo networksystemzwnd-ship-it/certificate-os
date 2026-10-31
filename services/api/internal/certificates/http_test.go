@@ -364,3 +364,67 @@ func TestCrossTenantIsolation(t *testing.T) {
 		t.Errorf("A's certificate changed: %v", got)
 	}
 }
+
+func TestReplaceFlow(t *testing.T) {
+	e := newEnv(t)
+	A := e.f.A.ID
+	r := e.fixture(A, certtest.FixtureOpts{StudentName: "Asha Verma"})
+	_, c := e.call("POST", "/api/v1/certificates", "a-admin@t.test", A, body(r))
+	oldID := str(c, "certificate", "id")
+	oldNumber := str(c, "certificate", "certificate_number")
+
+	// Permissions: replacing needs revoke AND issue (admin/owner), not staff or the issue grant alone.
+	rep := map[string]any{"reason": "name was misspelled"}
+	for _, who := range []string{"a-staff@t.test", "a-issuer@t.test"} {
+		if code, _ := e.call("POST", "/api/v1/certificates/"+oldID+"/replace", who, A, rep); code != 403 {
+			t.Errorf("%s replace: %d", who, code)
+		}
+	}
+	if code, _ := e.call("POST", "/api/v1/certificates/"+oldID+"/replace", "b-owner@t.test", e.f.B.ID, rep); code != 404 {
+		t.Errorf("another institute's replace: %d", code)
+	}
+	if code, res := e.call("POST", "/api/v1/certificates/"+oldID+"/replace", "a-admin@t.test", A, map[string]any{"reason": "x"}); code != 422 {
+		t.Errorf("short reason: %d %v", code, res)
+	}
+	// A failed render leaves the old certificate valid and creates no valid duplicate.
+	e.pdf.Err = errors.New("chromium crashed")
+	if code, _ := e.call("POST", "/api/v1/certificates/"+oldID+"/replace", "a-admin@t.test", A, rep); code != 502 {
+		t.Errorf("render failure: %d", code)
+	}
+	e.pdf.Err = nil
+	if _, g := e.call("GET", "/api/v1/certificates/"+oldID, "a-admin@t.test", A, nil); str(g, "certificate", "status") != "issued" || str(g, "certificate", "replaced_by_id") != "" {
+		t.Fatalf("old certificate after a failed replacement: %v", g)
+	}
+	// Success.
+	code, res := e.call("POST", "/api/v1/certificates/"+oldID+"/replace", "a-admin@t.test", A, rep)
+	if code != 201 {
+		t.Fatalf("replace: %d %v", code, res)
+	}
+	newID := str(res, "certificate", "id")
+	if str(res, "certificate", "status") != "issued" || str(res, "certificate", "replaces_id") != oldID || str(res, "certificate", "certificate_number") == oldNumber {
+		t.Fatalf("replacement %v", res)
+	}
+	_, g := e.call("GET", "/api/v1/certificates/"+oldID, "a-staff@t.test", A, nil)
+	if str(g, "certificate", "status") != "revoked" || str(g, "certificate", "replaced_by_id") != newID || str(g, "certificate", "revoke_reason") != "name was misspelled" {
+		t.Fatalf("old after replacement: %v", g)
+	}
+	_, l := e.call("GET", "/api/v1/certificates?status=issued", "a-admin@t.test", A, nil)
+	if got := l["certificates"].([]any); len(got) != 1 || str(got[0].(map[string]any), "id") != newID {
+		t.Fatalf("exactly one valid certificate expected: %v", l)
+	}
+	if rr := e.raw("GET", "/api/v1/certificates/"+oldID+"/pdf", "a-admin@t.test", A, nil); rr.Code != 200 {
+		t.Errorf("the old PDF must stay downloadable: %d", rr.Code)
+	}
+	// Replacing something that is not valid any more.
+	if code, _ := e.call("POST", "/api/v1/certificates/"+oldID+"/replace", "a-admin@t.test", A, rep); code != 409 {
+		t.Errorf("replace a replaced certificate: %d", code)
+	}
+	// Audit: ids and counts only, no reason text.
+	for _, rec := range e.w.ForEntity("certificate", oldID) {
+		for k, v := range rec.Metadata {
+			if s, ok := v.(string); ok && strings.Contains(s, "misspelled") {
+				t.Errorf("reason text leaked into audit metadata %q", k)
+			}
+		}
+	}
+}

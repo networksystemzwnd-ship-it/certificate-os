@@ -95,3 +95,32 @@ it('downloads the PDF through the API client and revokes with a reason', async (
   await user.click(screen.getByRole('button', { name: 'Revoke CERT-2026-000001' }));
   expect(await screen.findByText(/Revoked — Wrong name/)).toBeInTheDocument();
 });
+
+it('replaces an issued certificate with a reason, only for members who can issue and revoke', async () => {
+  let replaced = false;
+  const fetchMock = mockFetch({
+    'GET /api/v1/certificates': () => ({
+      body: { certificates: replaced
+        ? [cert({ id: 'c-2', certificate_number: 'CERT-2026-000002', replaces_id: 'c-1' }), cert({ status: 'revoked', revoke_reason: 'Name fixed', replaced_by_id: 'c-2' })]
+        : [cert()], has_more: false },
+    }),
+    'GET /api/v1/certificate-templates': () => ({ body: { templates: [], has_more: false } }),
+    'POST /api/v1/certificates/c-1/replace': (init) => {
+      expect(JSON.parse(String(init!.body))).toEqual({ reason: 'Name fixed' });
+      replaced = true;
+      return { status: 201, body: { certificate: cert({ id: 'c-2', certificate_number: 'CERT-2026-000002' }) } };
+    },
+  });
+  vi.spyOn(window, 'prompt').mockReturnValue('Name fixed');
+  const user = userEvent.setup();
+  const { unmount } = render(<CertificatesPage canIssue canRevoke />);
+  await user.click(await screen.findByRole('button', { name: 'Replace CERT-2026-000001' }));
+  expect(await screen.findByText(/Replaced — Name fixed/)).toBeInTheDocument();
+  expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith('/c-1/replace') && i?.method === 'POST')).toBe(true);
+  unmount();
+  // revoke-only or issue-only members never see the button
+  mockFetch({ 'GET /api/v1/certificates': () => ({ body: { certificates: [cert()], has_more: false } }), 'GET /api/v1/certificate-templates': () => ({ body: { templates: [], has_more: false } }) });
+  render(<CertificatesPage canIssue={false} canRevoke />);
+  await screen.findByRole('table', { name: 'Certificates' });
+  expect(screen.queryByRole('button', { name: /Replace/ })).not.toBeInTheDocument();
+});

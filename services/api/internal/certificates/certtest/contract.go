@@ -30,6 +30,9 @@ func ev(action string) audit.Event {
 	return audit.Event{ActorType: audit.ActorSystem, Action: action, EntityType: "certificate"}
 }
 
+// EventForTest is a minimal valid audit event for tests of other packages.
+func EventForTest() audit.Event { return ev("certificate.test") }
+
 func is(t *testing.T, err, want error, what string) {
 	t.Helper()
 	if !errors.Is(err, want) {
@@ -349,6 +352,135 @@ func RunStoreContract(t *testing.T, newHarness func(t *testing.T) Harness) {
 		gp, _ := h.Store.Get(ctx, a, pend.ID)
 		if gp.Status != certificates.Pending {
 			t.Fatalf("A's pending certificate changed: %s", gp.Status)
+		}
+	})
+
+	replace := func(t *testing.T, h Harness, s tenancy.Scope, old certificates.Certificate, r Refs, u string, at time.Time) (certificates.Certificate, error) {
+		return h.Store.BeginIssue(ctx, s, certificates.BeginInput{EnrollmentID: old.EnrollmentID, TemplateID: r.TemplateID, PublicID: pub(), IssuedBy: u, Now: at,
+			Replaces: old.ID, ReplaceReason: "name corrected"}, ev("certificate.replace_started"))
+	}
+
+	t.Run("replacement: the old certificate stays valid until the new PDF is stored, then it is revoked and linked in one step", func(t *testing.T) {
+		h := newHarness(t)
+		s, u := h.NewScope(), h.NewUser()
+		r := h.NewFixture(s, FixtureOpts{})
+		old := issue(t, h, s, r, u, t0)
+		nu, err := replace(t, h, s, old, r, u, t0.Add(time.Minute))
+		must(t, err)
+		if nu.Status != certificates.Pending || nu.ReplacesID != old.ID || nu.ReplaceReason != "name corrected" || nu.Number == old.Number || nu.PublicID == old.PublicID {
+			t.Fatalf("pending replacement %+v", nu)
+		}
+		g, _ := h.Store.Get(ctx, s, old.ID)
+		if g.Status != certificates.Issued || g.Replaced() {
+			t.Fatalf("old certificate must stay valid while the replacement is made: %+v", g)
+		}
+		done, err := h.Store.Complete(ctx, s, nu.ID, []byte("%PDF-1.4 new"), ev("certificate.issued"))
+		must(t, err)
+		if done.Status != certificates.Issued || done.ReplacesID != old.ID {
+			t.Fatalf("completed replacement %+v", done)
+		}
+		g, _ = h.Store.Get(ctx, s, old.ID)
+		if g.Status != certificates.Revoked || !g.Replaced() || g.ReplacedByID != nu.ID || g.ReplacedByPublicID != nu.PublicID || g.RevokedAt == nil || g.RevokeReason != "name corrected" {
+			t.Fatalf("old after replacement %+v", g)
+		}
+		if p, err := h.Store.GetPDF(ctx, s, old.ID); err != nil || len(p.Bytes) == 0 {
+			t.Fatalf("the old PDF must stay stored: %v", err)
+		}
+		acts := h.AuditActions(old.ID)
+		if len(acts) == 0 || acts[len(acts)-1] != "certificate.replaced" {
+			t.Fatalf("old certificate audit: %v", acts)
+		}
+		if m := h.AuditMeta(old.ID); m["replaced_by"] != nu.ID || m["number"] != old.Number {
+			t.Fatalf("replaced audit metadata %v", m)
+		}
+		// Exactly one valid certificate for the enrollment, and the chain can continue.
+		l, _ := h.Store.List(ctx, s, certificates.Filter{Status: certificates.Issued, Limit: 50})
+		if len(l) != 1 || l[0].ID != nu.ID {
+			t.Fatalf("valid certificates: %+v", l)
+		}
+		again, err := replace(t, h, s, done, r, u, t0.Add(2*time.Minute))
+		must(t, err)
+		if _, err := h.Store.Complete(ctx, s, again.ID, []byte("%PDF-1.4 third"), ev("certificate.issued")); err != nil {
+			t.Fatal(err)
+		}
+		g, _ = h.Store.Get(ctx, s, nu.ID)
+		if g.Status != certificates.Revoked || g.ReplacedByID != again.ID {
+			t.Fatalf("second replacement %+v", g)
+		}
+	})
+
+	t.Run("replacement refusals: only an issued certificate of the same enrollment, one at a time, never two valid ones", func(t *testing.T) {
+		h := newHarness(t)
+		s, u := h.NewScope(), h.NewUser()
+		r := h.NewFixture(s, FixtureOpts{})
+		pend, err := begin(t, h, s, r, u, t0)
+		must(t, err)
+		_, err = replace(t, h, s, pend, r, u, t0)
+		is(t, err, certificates.ErrState, "replace a pending certificate")
+		old, err := h.Store.Complete(ctx, s, pend.ID, []byte("%PDF-1.4 a"), ev("certificate.issued"))
+		must(t, err)
+		other := h.NewFixture(s, FixtureOpts{})
+		_, err = h.Store.BeginIssue(ctx, s, certificates.BeginInput{EnrollmentID: other.EnrollmentID, TemplateID: r.TemplateID, PublicID: pub(), IssuedBy: u, Now: t0,
+			Replaces: old.ID, ReplaceReason: "x"}, ev("certificate.replace_started"))
+		is(t, err, certificates.ErrState, "replace with another enrollment")
+		_, err = h.Store.BeginIssue(ctx, s, certificates.BeginInput{EnrollmentID: old.EnrollmentID, TemplateID: r.TemplateID, PublicID: pub(), IssuedBy: u, Now: t0,
+			Replaces: "00000000-0000-0000-0000-000000000000", ReplaceReason: "x"}, ev("certificate.replace_started"))
+		is(t, err, certificates.ErrNotFound, "replace an unknown certificate")
+		first, err := replace(t, h, s, old, r, u, t0.Add(time.Minute))
+		must(t, err)
+		_, err = replace(t, h, s, old, r, u, t0.Add(2*time.Minute))
+		is(t, err, certificates.ErrReplacing, "second replacement in progress")
+		_, err = begin(t, h, s, r, u, t0.Add(2*time.Minute))
+		is(t, err, certificates.ErrAlreadyIssued, "plain issue while a replacement is pending")
+		// A failed replacement leaves the old certificate valid and replaceable again.
+		_, err = h.Store.Fail(ctx, s, first.ID, "pdf rendering failed", ev("certificate.issue_failed"))
+		must(t, err)
+		if g, _ := h.Store.Get(ctx, s, old.ID); g.Status != certificates.Issued || g.Replaced() {
+			t.Fatalf("old after a failed replacement: %+v", g)
+		}
+		second, err := replace(t, h, s, old, r, u, t0.Add(3*time.Minute))
+		must(t, err)
+		// The old certificate is revoked meanwhile: the replacement cannot complete and the old one is untouched.
+		_, err = h.Store.Revoke(ctx, s, old.ID, "withdrawn", u, ev("certificate.revoked"))
+		must(t, err)
+		_, err = h.Store.Complete(ctx, s, second.ID, []byte("%PDF-1.4 b"), ev("certificate.issued"))
+		is(t, err, certificates.ErrState, "complete after the old one was revoked")
+		if g, _ := h.Store.Get(ctx, s, second.ID); g.Status != certificates.Pending {
+			t.Fatalf("a refused completion must not change the replacement: %s", g.Status)
+		}
+		_, err = replace(t, h, s, old, r, u, t0.Add(4*time.Minute))
+		is(t, err, certificates.ErrState, "replace a revoked certificate")
+	})
+
+	t.Run("a stale pending replacement is abandoned by the next attempt", func(t *testing.T) {
+		h := newHarness(t)
+		s, u := h.NewScope(), h.NewUser()
+		r := h.NewFixture(s, FixtureOpts{})
+		old := issue(t, h, s, r, u, t0)
+		stuck, err := replace(t, h, s, old, r, u, t0.Add(time.Minute))
+		must(t, err)
+		next, err := replace(t, h, s, old, r, u, t0.Add(time.Minute+certificates.StalePendingAfter+time.Second))
+		must(t, err)
+		if g, _ := h.Store.Get(ctx, s, stuck.ID); g.Status != certificates.Failed {
+			t.Fatalf("stale pending replacement: %s", g.Status)
+		}
+		if next.ID == stuck.ID {
+			t.Fatal("expected a new attempt")
+		}
+	})
+
+	t.Run("another institute cannot replace or see the link", func(t *testing.T) {
+		h := newHarness(t)
+		a, b := h.NewScope(), h.NewScope()
+		ua, ub := h.NewUser(), h.NewUser()
+		r := h.NewFixture(a, FixtureOpts{})
+		old := issue(t, h, a, r, ua, t0)
+		rb := h.NewFixture(b, FixtureOpts{})
+		_, err := h.Store.BeginIssue(ctx, b, certificates.BeginInput{EnrollmentID: rb.EnrollmentID, TemplateID: rb.TemplateID, PublicID: pub(), IssuedBy: ub, Now: t0,
+			Replaces: old.ID, ReplaceReason: "x"}, ev("certificate.replace_started"))
+		is(t, err, certificates.ErrNotFound, "foreign replace")
+		if g, _ := h.Store.Get(ctx, a, old.ID); g.Status != certificates.Issued {
+			t.Fatal("A's certificate changed")
 		}
 	})
 }

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.10.0
+  version: 0.11.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -631,6 +631,46 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { description: Not issued, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates/{cid}/replace:
+    post:
+      summary: Issue a corrected certificate that replaces an issued one (requires certificates.revoke AND certificates.issue)
+      description: >
+        The old certificate stays valid until the new PDF is stored; then it is revoked with the reason and linked to
+        the new one in one transaction (public status `replaced`). The new certificate reflects the current student,
+        course and template data (`template_id` defaults to the old template, `template_version` 0 = current).
+        409 when the certificate is not issued or a replacement is already in progress; a failed render leaves the old
+        certificate valid (502 `render_failed`, 503 `render_unavailable`).
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: cid, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 500 }, template_id: { type: string }, template_version: { type: integer, minimum: 0, maximum: 100 } } }
+      responses:
+        '201': { description: "Created: {certificate} (the new one; `replaces_id` points to the old one)" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/public/certificates/{public_id}:
+    get:
+      summary: Public verification of one certificate (no authentication)
+      description: >
+        Returns only approved fields: status (`valid`, `revoked`, `replaced`), certificate number, institute name,
+        student name, course, issue date, and for revoked/replaced the revocation date (and, for replaced, the public
+        id of the replacement in `replaced_by`). Never contact data, grade, internal ids, reasons or the PDF.
+        Malformed, unknown, pending and failed ids all return the same 404. Rate limited per client address
+        (60 per minute, 429 with Retry-After). Never cached (`Cache-Control: no-store`, `X-Robots-Tag: noindex`).
+        The QR code on a certificate links to the web page `/verify/{public_id}`, which calls this route.
+      security: []
+      parameters: [{ name: public_id, in: path, required: true, schema: { type: string, minLength: 43, maxLength: 43 } }]
+      responses:
+        '200': { description: "OK: {verification: {status, certificate_number, institute_name, student_name, course_name, issue_date, revoked_at?, replaced_by?}}" }
+        '404': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
   /api/v1/certificates/bulk-preview:
     get:
       summary: Count what a bulk job for a batch would do, before anything is created (requires certificates.issue)

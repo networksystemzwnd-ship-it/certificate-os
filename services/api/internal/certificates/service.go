@@ -91,7 +91,12 @@ func (s *Service) Issue(ctx context.Context, t tenancy.Tenant, req IssueRequest,
 		return Certificate{}, err
 	}
 
-	// From here on the pending record exists: finish or fail it even if the client disconnects.
+	return s.finish(ctx, t, cert, reqID)
+}
+
+// finish renders and stores the PDF of a pending certificate and marks it issued, or marks it failed. From
+// the moment the pending record exists it completes even if the client disconnects.
+func (s *Service) finish(ctx context.Context, t tenancy.Tenant, cert Certificate, reqID string) (Certificate, error) {
 	bg := context.WithoutCancel(ctx)
 	fail := func(reason string, cause error) (Certificate, error) {
 		if _, ferr := s.Store.Fail(bg, t.Scope(), cert.ID, reason, event(t, "certificate.issue_failed", reqID, map[string]any{"reason": reason})); ferr != nil {
@@ -111,11 +116,65 @@ func (s *Service) Issue(ctx context.Context, t tenancy.Tenant, req IssueRequest,
 		map[string]any{"template_id": cert.TemplateID, "template_version": cert.TemplateVersion}))
 	if err != nil {
 		if errors.Is(err, ErrState) {
+			if cert.ReplacesID != "" {
+				// The certificate being replaced is no longer valid: this replacement must not stay pending.
+				_, _ = s.Store.Fail(bg, t.Scope(), cert.ID, "the certificate to replace is no longer valid", event(t, "certificate.issue_failed", reqID,
+					map[string]any{"reason": "replaced certificate no longer valid"}))
+			}
 			return Certificate{}, err
 		}
 		return fail("could not store the pdf", err)
 	}
 	return done, nil
+}
+
+type ReplaceRequest struct {
+	CertificateID   string
+	Reason          string
+	TemplateID      string // default: the template of the certificate being replaced
+	TemplateVersion int    // 0 = the template's current version
+}
+
+// Replace issues a corrected certificate for the same enrollment. The old certificate stays valid until the new
+// PDF is stored; then it is revoked with the reason and linked to the new one (public page: "replaced").
+// The new certificate reflects the CURRENT student, course and template data.
+func (s *Service) Replace(ctx context.Context, t tenancy.Tenant, req ReplaceRequest, reqID string) (Certificate, error) {
+	p := map[string]string{}
+	reason := strings.TrimSpace(req.Reason)
+	if n := len([]rune(reason)); n < 3 || n > 500 {
+		p["reason"] = "Explain what is being corrected (3–500 characters)."
+	}
+	if req.TemplateVersion < 0 || req.TemplateVersion > templates.MaxVersions {
+		p["template_version"] = "Use a version number from the template's history."
+	}
+	if len(p) > 0 {
+		return Certificate{}, &ValidationError{Problems: p}
+	}
+	if s.renderOff() {
+		return Certificate{}, ErrRenderUnavailable
+	}
+	old, err := s.Store.Get(ctx, t.Scope(), req.CertificateID)
+	if err != nil {
+		return Certificate{}, err
+	}
+	if old.Status != Issued {
+		return Certificate{}, ErrState
+	}
+	tplID := strings.TrimSpace(req.TemplateID)
+	if tplID == "" {
+		tplID = old.TemplateID
+	}
+	publicID, err := NewPublicID()
+	if err != nil {
+		return Certificate{}, err
+	}
+	cert, err := s.Store.BeginIssue(ctx, t.Scope(), BeginInput{EnrollmentID: old.EnrollmentID, TemplateID: tplID, Version: req.TemplateVersion,
+		PublicID: publicID, IssuedBy: t.UserID, Now: s.Now(), Replaces: old.ID, ReplaceReason: reason},
+		event(t, "certificate.replace_started", reqID, map[string]any{"replaces": old.ID, "template_id": tplID, "has_reason": true}))
+	if err != nil {
+		return Certificate{}, err
+	}
+	return s.finish(ctx, t, cert, reqID)
 }
 
 // html renders the certificate page from its immutable snapshot (never from live student data).

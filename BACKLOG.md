@@ -128,6 +128,22 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] Docker image with Chromium (the Dockerfile is yours; see the runbook) and an issue/download check in your environment
 - Not included: bulk jobs and ZIP export (M4c), logo/signature images (COS-011), public verification page and replace flow (M5), email delivery (M5). Open: D-151 (who may download).
 
+### M5a — Replace flow and public verification — Built (needs your verification)
+- Priority: P0
+- Delivered: migration 0013 (replacement links, one-valid-certificate index that exempts only a pending replacement, trigger that lets the link be written once while revoking, narrow public-lookup policy, `verification_events`); `POST /certificates/{id}/replace`; `verification` package with `GET /api/v1/public/certificates/{public_id}` and the public page `/verify/:publicId` (valid / revoked / replaced / not found, no login, no workspace navigation); "Replace" action in the Certificates tab; decisions D-160..D-164; OpenAPI 0.11.0.
+- Acceptance:
+  - [x] valid / revoked / replaced are reported accurately, the replacement verifies as valid (HTTP tests; mutation-checked)
+  - [x] public response has exactly the approved fields; no grade, contact data, internal ids, reasons or PDF; no-store, noindex
+  - [x] malformed, unknown, pending and failed ids return the identical 404; the certificate number is not a credential
+  - [x] rate limited per address (429 + Retry-After); events recorded without IP or user agent
+  - [x] replacement: old certificate stays valid until the new PDF is stored, then revoked and linked in one step; failed render or concurrent revoke leaves exactly one valid certificate; one replacement at a time; stale pending replacement abandoned; other institutes get 404 (shared store contract, memory store, `-race`)
+  - [x] migration 0013 verified on real PostgreSQL 16 as the restricted role: one-valid-certificate and one-pending-replacement indexes, trigger refuses re-linking and tampering, public policy exposes only the presented id and is read-only, other tables stay closed, events insert-only, down/up cycle
+  - [ ] Postgres stores through real pgx: certificate contract (now with replacement) and `verification/pgstore` test with `TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL` (type-checked against a stub only)
+  - [ ] frontend tests/lint/typecheck (never run in the build sandbox; syntax check only)
+  - [ ] scan a printed/rendered QR with a phone against your real `PUBLIC_BASE_URL` (the QR payload was decoded independently in M4b)
+- Open for you: D-160 (public fields), D-161 (no public PDF download).
+- Not included: email delivery with attempts and retry (M5b), institute-configurable public fields (P1), a shared rate limiter for several API replicas (D-108).
+
 ### M4c — Bulk certificate issuing — Built (needs your verification)
 - Priority: P0 (ZIP export P1)
 - Delivered: migration 0012 (`bulk_jobs`, `bulk_job_items`, RLS, one active job per institute, no deletes); `certificates.Jobs` service and `JobStore` (memory + Postgres, one shared contract); runner with token + lease, resume, retry-failed, cancel; routes `GET /certificates/bulk-preview`, `POST /certificates/bulk`, `GET /bulk-jobs`, `GET /bulk-jobs/{id}`, `/items`, `POST /bulk-jobs/{id}/retry-failed|resume|cancel`, `GET /bulk-jobs/{id}/export` (ZIP + manifest); new permission `certificates.export`; "Issue a whole batch" panel in the Certificates tab; decisions D-152..D-159; OpenAPI 0.10.0.

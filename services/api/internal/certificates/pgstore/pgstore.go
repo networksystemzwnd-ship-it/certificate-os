@@ -47,8 +47,11 @@ func mapErr(err error) error {
 	}
 	switch e.Code {
 	case "23505":
-		if e.ConstraintName == "certificates_one_live_per_enrollment" {
+		switch e.ConstraintName {
+		case "certificates_one_live_per_enrollment":
 			return certificates.ErrAlreadyIssued
+		case "certificates_one_pending_replacement":
+			return certificates.ErrReplacing
 		}
 	case "22P02":
 		return certificates.ErrNotFound
@@ -75,13 +78,15 @@ func audited(ctx context.Context, tx pgx.Tx, sc tenancy.Scope, ev audit.Event, i
 
 const certCols = `c.id::text, c.certificate_number, c.public_id, c.student_id::text, c.enrollment_id::text, c.template_id::text,
 	c.template_version, c.snapshot::text, c.status, coalesce(c.pdf_sha256, ''), coalesce(c.pdf_size, 0), coalesce(c.issued_by::text, ''),
-	c.created_at, c.issued_at, c.failed_at, c.failure, c.revoked_at, c.revoke_reason`
+	c.created_at, c.issued_at, c.failed_at, c.failure, c.revoked_at, c.revoke_reason,
+	coalesce(c.replaces_id::text, ''), coalesce(c.replaced_by::text, ''), coalesce(c.replaced_by_public_id, ''), c.replace_reason`
 
 func scanCert(row pgx.Row) (certificates.Certificate, error) {
 	var c certificates.Certificate
 	var snap, status string
 	err := row.Scan(&c.ID, &c.Number, &c.PublicID, &c.StudentID, &c.EnrollmentID, &c.TemplateID, &c.TemplateVersion, &snap, &status,
-		&c.PDFSHA256, &c.PDFSize, &c.IssuedBy, &c.CreatedAt, &c.IssuedAt, &c.FailedAt, &c.Failure, &c.RevokedAt, &c.RevokeReason)
+		&c.PDFSHA256, &c.PDFSize, &c.IssuedBy, &c.CreatedAt, &c.IssuedAt, &c.FailedAt, &c.Failure, &c.RevokedAt, &c.RevokeReason,
+		&c.ReplacesID, &c.ReplacedByID, &c.ReplacedByPublicID, &c.ReplaceReason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return c, certificates.ErrNotFound
 	}
@@ -96,11 +101,22 @@ func scanCert(row pgx.Row) (certificates.Certificate, error) {
 }
 
 func (s *Store) BeginIssue(ctx context.Context, sc tenancy.Scope, in certificates.BeginInput, ev audit.Event) (certificates.Certificate, error) {
-	if !okID(in.EnrollmentID) || !okID(in.TemplateID) || in.Version < 0 {
+	if !okID(in.EnrollmentID) || !okID(in.TemplateID) || in.Version < 0 || (in.Replaces != "" && !okID(in.Replaces)) {
 		return certificates.Certificate{}, certificates.ErrNotFound
 	}
 	var out certificates.Certificate
 	err := s.tx(ctx, sc, func(tx pgx.Tx) error {
+		if in.Replaces != "" {
+			// The certificate being replaced must be issued and belong to the same enrollment; lock it so it
+			// cannot be revoked while the replacement is being created.
+			old, err := lock(ctx, tx, sc, in.Replaces)
+			if err != nil {
+				return err
+			}
+			if old.Status != certificates.Issued || old.EnrollmentID != in.EnrollmentID {
+				return certificates.ErrState
+			}
+		}
 		var src certificates.Source
 		// FOR SHARE keeps the enrollment and student stable until this transaction commits.
 		err := tx.QueryRow(ctx, `SELECT s.id::text, s.full_name, coalesce(s.student_number, ''), s.archived_at IS NOT NULL,
@@ -169,9 +185,10 @@ func (s *Store) BeginIssue(ctx context.Context, sc tenancy.Scope, in certificate
 		}
 		var id string
 		if err := tx.QueryRow(ctx, `INSERT INTO certificates (institute_id, certificate_number, public_id, student_id, enrollment_id,
-				template_id, template_version, snapshot, issued_by, created_at)
-			VALUES ($1::uuid, $2, $3, $4::uuid, $5::uuid, $6::uuid, $7, $8::jsonb, nullif($9, '')::uuid, $10) RETURNING id::text`,
-			sc.InstituteID(), number, in.PublicID, src.StudentID, in.EnrollmentID, in.TemplateID, src.TemplateVersion, string(snap), in.IssuedBy, in.Now).
+				template_id, template_version, snapshot, issued_by, created_at, replaces_id, replace_reason)
+			VALUES ($1::uuid, $2, $3, $4::uuid, $5::uuid, $6::uuid, $7, $8::jsonb, nullif($9, '')::uuid, $10, nullif($11, '')::uuid, $12) RETURNING id::text`,
+			sc.InstituteID(), number, in.PublicID, src.StudentID, in.EnrollmentID, in.TemplateID, src.TemplateVersion, string(snap), in.IssuedBy, in.Now,
+			in.Replaces, in.ReplaceReason).
 			Scan(&id); err != nil {
 			return mapErr(err)
 		}
@@ -209,6 +226,27 @@ func (s *Store) Complete(ctx context.Context, sc tenancy.Scope, id string, pdf [
 		}
 		if len(pdf) == 0 {
 			return errors.New("certificates: empty pdf")
+		}
+		var old certificates.Certificate
+		if cur.ReplacesID != "" {
+			// Lock and revoke the certificate being replaced FIRST (the one-valid-certificate index would refuse two
+			// issued ones), linking it to this one. If it is no longer issued the replacement cannot complete.
+			if old, err = lock(ctx, tx, sc, cur.ReplacesID); err != nil {
+				return err
+			}
+			if old.Status != certificates.Issued {
+				return certificates.ErrState
+			}
+			if _, err := tx.Exec(ctx, `UPDATE certificates SET status = 'revoked', revoked_at = now(), revoked_by = nullif($3, '')::uuid, revoke_reason = $4,
+					replaced_by = $5::uuid, replaced_by_public_id = $6
+				WHERE institute_id = $1::uuid AND id = $2::uuid`, sc.InstituteID(), old.ID, cur.IssuedBy, cur.ReplaceReason, cur.ID, cur.PublicID); err != nil {
+				return err
+			}
+			oe := audit.Event{ActorType: ev.ActorType, ActorUserID: ev.ActorUserID, RequestID: ev.RequestID, Action: "certificate.replaced",
+				EntityType: "certificate", Metadata: map[string]any{"replaced_by": cur.ID}}
+			if err := audited(ctx, tx, sc, oe, old.ID, old.Number); err != nil {
+				return err
+			}
 		}
 		sum := sha256.Sum256(pdf)
 		if _, err := tx.Exec(ctx, `INSERT INTO certificate_files (institute_id, certificate_id, content) VALUES ($1::uuid, $2::uuid, $3)`,

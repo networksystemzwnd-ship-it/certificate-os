@@ -16,6 +16,7 @@ import (
 	"github.com/certificate-os/api/internal/certificates"
 	"github.com/certificate-os/api/internal/templates"
 	"github.com/certificate-os/api/internal/tenancy"
+	"github.com/certificate-os/api/internal/verification"
 )
 
 // FixtureOpts shapes the records a test needs.
@@ -66,7 +67,8 @@ type row struct{ c certificates.Certificate }
 type MemStore struct {
 	mu       sync.Mutex
 	n        int
-	inactive map[string]bool        // institutes that are not active (suspended)
+	inactive map[string]bool // institutes that are not active (suspended)
+	events   []VerificationEvent
 	data     map[string]*tenantData // keyed by institute id: the in-memory equivalent of RLS
 	Audit    audit.Writer
 }
@@ -228,6 +230,15 @@ func (m *MemStore) BeginIssue(ctx context.Context, s tenancy.Scope, in certifica
 	if err := certificates.CheckEligible(source); err != nil {
 		return certificates.Certificate{}, err
 	}
+	if in.Replaces != "" {
+		old, ok := d.certs[in.Replaces]
+		if !ok {
+			return certificates.Certificate{}, certificates.ErrNotFound
+		}
+		if old.c.Status != certificates.Issued || old.c.EnrollmentID != in.EnrollmentID {
+			return certificates.Certificate{}, certificates.ErrState
+		}
+	}
 	// Abandon stale pending certificates of this enrollment; refuse when a live one remains.
 	var abandon []*row
 	for _, r := range d.certs {
@@ -236,12 +247,20 @@ func (m *MemStore) BeginIssue(ctx context.Context, s tenancy.Scope, in certifica
 		}
 		switch r.c.Status {
 		case certificates.Issued:
+			if in.Replaces != "" && r.c.ID == in.Replaces {
+				continue // the certificate being replaced stays valid meanwhile
+			}
 			return certificates.Certificate{}, certificates.ErrAlreadyIssued
 		case certificates.Pending:
-			if in.Now.Sub(r.c.CreatedAt) < certificates.StalePendingAfter {
+			if in.Now.Sub(r.c.CreatedAt) >= certificates.StalePendingAfter {
+				abandon = append(abandon, r)
+			} else if r.c.ReplacesID != "" && in.Replaces == r.c.ReplacesID {
+				return certificates.Certificate{}, certificates.ErrReplacing
+			} else if r.c.ReplacesID == "" || in.Replaces == "" {
 				return certificates.Certificate{}, certificates.ErrAlreadyIssued
+			} else {
+				return certificates.Certificate{}, certificates.ErrReplacing
 			}
-			abandon = append(abandon, r)
 		}
 	}
 	year := in.Now.UTC().Year()
@@ -249,7 +268,8 @@ func (m *MemStore) BeginIssue(ctx context.Context, s tenancy.Scope, in certifica
 	m.n++
 	c := certificates.Certificate{ID: fmt.Sprintf("cert-%d", m.n), Number: number, PublicID: in.PublicID, StudentID: source.StudentID,
 		EnrollmentID: in.EnrollmentID, TemplateID: in.TemplateID, TemplateVersion: version,
-		Snapshot: certificates.BuildSnapshot(source, number, in.Now), Status: certificates.Pending, IssuedBy: in.IssuedBy, CreatedAt: in.Now}
+		Snapshot: certificates.BuildSnapshot(source, number, in.Now), Status: certificates.Pending, IssuedBy: in.IssuedBy, CreatedAt: in.Now,
+		ReplacesID: in.Replaces, ReplaceReason: in.ReplaceReason}
 	if err := m.record(ctx, s, ev, c.ID, number); err != nil {
 		return certificates.Certificate{}, err
 	}
@@ -284,11 +304,28 @@ func (m *MemStore) Complete(ctx context.Context, s tenancy.Scope, id string, pdf
 	if len(pdf) == 0 {
 		return certificates.Certificate{}, errors.New("empty pdf")
 	}
+	var old *row
+	if r.c.ReplacesID != "" {
+		old = d.certs[r.c.ReplacesID]
+		if old == nil || old.c.Status != certificates.Issued {
+			return certificates.Certificate{}, certificates.ErrState // the certificate to replace is no longer valid
+		}
+	}
 	if err := m.record(ctx, s, ev, id, r.c.Number); err != nil {
 		return certificates.Certificate{}, err
 	}
 	sum := sha256.Sum256(pdf)
 	now := time.Now()
+	if old != nil {
+		oe := audit.Event{ActorType: ev.ActorType, ActorUserID: ev.ActorUserID, RequestID: ev.RequestID, Action: "certificate.replaced",
+			EntityType: "certificate", Metadata: map[string]any{"replaced_by": id}}
+		if err := m.record(ctx, s, oe, old.c.ID, old.c.Number); err != nil {
+			return certificates.Certificate{}, err
+		}
+		t := now
+		old.c.Status, old.c.RevokedAt, old.c.RevokeReason = certificates.Revoked, &t, r.c.ReplaceReason
+		old.c.ReplacedByID, old.c.ReplacedByPublicID = id, r.c.PublicID
+	}
 	r.c.Status, r.c.PDFSHA256, r.c.PDFSize, r.c.IssuedAt = certificates.Issued, hex.EncodeToString(sum[:]), len(pdf), &now
 	d.files[id] = append([]byte(nil), pdf...)
 	return r.c, nil
@@ -378,4 +415,36 @@ func (m *MemStore) Revoke(ctx context.Context, s tenancy.Scope, id, reason, by s
 	r.c.Status, r.c.RevokedAt, r.c.RevokeReason = certificates.Revoked, &now, reason
 	_ = by
 	return r.c, nil
+}
+
+// VerificationEvent is what the memory store records for a public verification.
+type VerificationEvent struct{ InstituteID, CertificateID, Result string }
+
+// Verifications lists the recorded public verifications, oldest first.
+func (m *MemStore) Verifications() []VerificationEvent {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]VerificationEvent(nil), m.events...)
+}
+
+var _ verification.Store = (*MemStore)(nil)
+
+// Lookup implements verification.Store across all institutes: only issued and revoked certificates exist publicly.
+func (m *MemStore) Lookup(_ context.Context, publicID string) (verification.Record, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for inst, d := range m.data {
+		for _, r := range d.certs {
+			c := r.c
+			if c.PublicID != publicID || (c.Status != certificates.Issued && c.Status != certificates.Revoked) {
+				continue
+			}
+			rec := verification.Record{Number: c.Number, InstituteName: c.Snapshot.InstituteName, StudentName: c.Snapshot.StudentName,
+				CourseName: c.Snapshot.CourseName, IssueDate: c.Snapshot.IssueDate, Revoked: c.Status == certificates.Revoked,
+				RevokedAt: c.RevokedAt, ReplacedByPublicID: c.ReplacedByPublicID}
+			m.events = append(m.events, VerificationEvent{inst, c.ID, string(verification.StatusOf(rec))})
+			return rec, nil
+		}
+	}
+	return verification.Record{}, verification.ErrNotFound
 }

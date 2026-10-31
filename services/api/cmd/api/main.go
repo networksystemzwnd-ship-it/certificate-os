@@ -46,6 +46,8 @@ import (
 	templatespg "github.com/certificate-os/api/internal/templates/pgstore"
 	"github.com/certificate-os/api/internal/tenancy"
 	tenancypg "github.com/certificate-os/api/internal/tenancy/pgstore"
+	"github.com/certificate-os/api/internal/verification"
+	verificationpg "github.com/certificate-os/api/internal/verification/pgstore"
 	"github.com/certificate-os/api/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -187,6 +189,9 @@ func run(args []string) error {
 	bulkJobs := certificates.NewJobs(ctx, certsSvc, certsStore, func(msg string, args ...any) { log.Error(msg, args...) })
 	bulkJobs.Audit = auditStore
 	(&certificates.Handler{Svc: certsSvc, Jobs: bulkJobs, Log: log, Tenancy: tenantH}).Register(mux)
+	// Public verification: no authentication, narrow response, per-IP rate limit (M5a).
+	verifyH := verification.NewHandler(verification.NewService(verificationpg.New(pool, func(msg string, args ...any) { log.Warn(msg, args...) })), log)
+	verifyH.Register(mux)
 	staffStore := staffpg.New(pool)
 	staff.NewHandler(staff.NewService(staffStore, staffStore), log, tenantH).Register(mux)
 	(&tenancy.OpsHandler{Svc: &tenancy.OpsService{Store: tenantStore}, Log: log, Authn: authH.Authenticate}).Register(mux)

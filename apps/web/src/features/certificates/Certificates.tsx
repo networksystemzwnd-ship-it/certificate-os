@@ -113,7 +113,7 @@ function IssuePanel({ onIssued }: { onIssued: (c: Certificate) => void }) {
   );
 }
 
-function Row({ cert, canRevoke, onChanged }: { cert: Certificate; canRevoke: boolean; onChanged: () => void }) {
+function Row({ cert, canRevoke, canReplace, onChanged }: { cert: Certificate; canRevoke: boolean; canReplace: boolean; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const download = async () => {
@@ -149,16 +149,31 @@ function Row({ cert, canRevoke, onChanged }: { cert: Certificate; canRevoke: boo
       setBusy(false);
     }
   };
+  const replace = async () => {
+    const reason = window.prompt(`What is being corrected on ${cert.certificate_number}? A new certificate will be issued and this one marked as replaced. (3–500 characters)`);
+    if (reason === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await certificatesApi.replace(cert.id, reason);
+      onChanged();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   const hasPdf = cert.status === 'issued' || cert.status === 'revoked';
   return (
     <tr>
       <td>{cert.certificate_number}</td>
       <td>{cert.student_name}</td>
       <td>{cert.course_name}</td>
-      <td>{STATUS_LABEL[cert.status]}{cert.status === 'revoked' && cert.revoke_reason ? ` — ${cert.revoke_reason}` : ''}{cert.status === 'failed' ? ' — not issued' : ''}</td>
+      <td>{cert.status === 'revoked' && cert.replaced_by_id ? 'Replaced' : STATUS_LABEL[cert.status]}{cert.status === 'revoked' && cert.revoke_reason ? ` — ${cert.revoke_reason}` : ''}{cert.status === 'failed' ? ' — not issued' : ''}</td>
       <td>
         {hasPdf && <button type="button" disabled={busy} onClick={download}>Download {cert.certificate_number}</button>}{' '}
-        {canRevoke && cert.status === 'issued' && <button type="button" disabled={busy} onClick={revoke}>Revoke {cert.certificate_number}</button>}
+        {canRevoke && cert.status === 'issued' && <button type="button" disabled={busy} onClick={revoke}>Revoke {cert.certificate_number}</button>}{' '}
+        {canReplace && cert.status === 'issued' && <button type="button" disabled={busy} onClick={replace}>Replace {cert.certificate_number}</button>}
         {error && <span role="alert"> {error}</span>}
       </td>
     </tr>
@@ -197,7 +212,7 @@ export function CertificatesPage({ canIssue, canRevoke, canExport = false }: { c
             <thead><tr><th scope="col">Number</th><th scope="col">Student</th><th scope="col">Course</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
             <tbody>
               {list.state.data.certificates.map((c) => (
-                <Row key={c.id} cert={c} canRevoke={canRevoke} onChanged={list.retry} />
+                <Row key={c.id} cert={c} canRevoke={canRevoke} canReplace={canIssue && canRevoke} onChanged={list.retry} />
               ))}
             </tbody>
           </table>

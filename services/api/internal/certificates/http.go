@@ -29,6 +29,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/certificates/{id}", g(auth.PermCertsRead, http.HandlerFunc(h.get)))
 	mux.Handle("GET /api/v1/certificates/{id}/pdf", g(auth.PermCertsRead, http.HandlerFunc(h.download)))
 	mux.Handle("POST /api/v1/certificates/{id}/revoke", g(auth.PermCertsRevoke, http.HandlerFunc(h.revoke)))
+	// Replacing revokes the old certificate AND issues a new one, so it needs both permissions.
+	mux.Handle("POST /api/v1/certificates/{id}/replace", g(auth.PermCertsRevoke, http.HandlerFunc(h.replace)))
 	if h.Jobs != nil {
 		h.registerBulk(mux)
 	}
@@ -57,6 +59,8 @@ type certDTO struct {
 	Failure         string     `json:"failure,omitempty"`
 	RevokedAt       *time.Time `json:"revoked_at"`
 	RevokeReason    string     `json:"revoke_reason,omitempty"`
+	ReplacesID      string     `json:"replaces_id,omitempty"`
+	ReplacedByID    string     `json:"replaced_by_id,omitempty"`
 }
 
 func (h *Handler) dto(c Certificate) certDTO {
@@ -65,7 +69,7 @@ func (h *Handler) dto(c Certificate) certDTO {
 		CourseName: sn.CourseName, BatchName: sn.BatchName, CompletionDate: sn.CompletionDate, Grade: sn.Grade, IssueDate: sn.IssueDate,
 		EnrollmentID: c.EnrollmentID, TemplateID: c.TemplateID, TemplateName: sn.TemplateName, TemplateVersion: c.TemplateVersion,
 		VerifyURL: h.Svc.VerifyURL(c.PublicID), PDFSHA256: c.PDFSHA256, PDFSize: c.PDFSize, CreatedAt: c.CreatedAt, IssuedAt: c.IssuedAt,
-		Failure: c.Failure, RevokedAt: c.RevokedAt, RevokeReason: c.RevokeReason}
+		Failure: c.Failure, RevokedAt: c.RevokedAt, RevokeReason: c.RevokeReason, ReplacesID: c.ReplacesID, ReplacedByID: c.ReplacedByID}
 }
 
 func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
@@ -78,6 +82,8 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusUnprocessableEntity, httpx.CodeValidation, ee.Reason, map[string]string{ee.Field: ee.Reason})
 	case errors.Is(err, ErrNotFound):
 		httpx.NotFound(w, r)
+	case errors.Is(err, ErrReplacing):
+		httpx.WriteError(w, r, http.StatusConflict, httpx.CodeConflict, "A replacement of this certificate is already being made. Try again in a few minutes.", nil)
 	case errors.Is(err, ErrJobActive):
 		httpx.WriteError(w, r, http.StatusConflict, httpx.CodeConflict, "Another bulk job is still running. Wait for it to finish or cancel it first.", nil)
 	case errors.Is(err, ErrNothingToIssue):
@@ -206,4 +212,26 @@ func (h *Handler) revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"certificate": h.dto(c)})
+}
+
+func (h *Handler) replace(w http.ResponseWriter, r *http.Request) {
+	t := tenant(r)
+	if !t.Can(auth.PermCertsIssue) {
+		httpx.WriteError(w, r, http.StatusForbidden, httpx.CodeForbidden, "You need permission to issue certificates to replace one.", nil)
+		return
+	}
+	var b struct {
+		Reason          string `json:"reason"`
+		TemplateID      string `json:"template_id"`
+		TemplateVersion int    `json:"template_version"`
+	}
+	if !h.decode(w, r, &b) {
+		return
+	}
+	c, err := h.Svc.Replace(r.Context(), t, ReplaceRequest{CertificateID: r.PathValue("id"), Reason: b.Reason, TemplateID: b.TemplateID, TemplateVersion: b.TemplateVersion}, rid(r))
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusCreated, map[string]any{"certificate": h.dto(c)})
 }
