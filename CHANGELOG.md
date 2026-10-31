@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Certificate templates (M4a): presets (classic, modern, minimal) with fixed configurable fields, immutable versions (database-enforced), archive/restore, safe server-side preview from sample data shown in a sandboxed iframe, REST API, audit events, migration 0010, "Templates" tab (read for staff, edit for admin/owner). No PDF yet and no new dependencies.
 - Staff management (M3c): owner invites admin/staff by one-time link (7 days, token hash only, email must match), accept-invite page that survives login/registration, change role/grants, remove member, revoke invitation; migration 0009; Staff tab (owner only); members list now shows emails. No new dependencies. No email is sent yet (D-138).
 - Student import (M3b): upload a CSV, map columns, preview row-level problems, confirm; duplicates are skipped and never overwritten; downloadable error report; enrolment with status, completion date and grade; migration 0008; "Import students" tab (admin/owner). No new dependencies (stdlib `encoding/csv`).
 - Records (M3a): courses, batches, students and enrollments (migration 0007) with row-level security, archive/restore (no hard delete), search + pagination, enrollment status/completion date/grade, REST API with permission guards and audit events (ids and field names only), and Students/Courses/Batches tabs in the workspace.

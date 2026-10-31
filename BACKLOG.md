@@ -101,6 +101,18 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox)
 - Not included: sending the invitation by email (needs the notification worker), resending (revoke and create again), transferring ownership, institute profile edits.
 
+### M4a — Certificate templates, versions and preview — Built (needs your verification)
+- Priority: P0
+- Delivered: migration 0010 (`certificate_templates`, `certificate_template_versions`, RLS, insert-only versions with an immutability trigger); `templates` package (validation, closed placeholder list, escaped renderer with CSP, service, REST API, memory and Postgres stores sharing one contract); audit events `template.created/renamed/version_created/archived/restored` (ids, preset and version number only); Templates tab with create-from-preset, live preview in a sandboxed iframe, new-version editing, version list, archive/restore.
+- Acceptance:
+  - [x] template text cannot inject markup, script or external resources (renderer tests inspect every emitted tag; mutation-checked)
+  - [x] versions never change; edit creates a new version; archived templates take no new versions (contract + HTTP tests)
+  - [x] staff read/preview only, admin/owner write, suspended institute read-only, other institutes get 404/403 on every route (HTTP tests, `-race`)
+  - [x] migration 0010 verified on real PostgreSQL 16 (immutability trigger, composite FK, RLS fail-closed and cross-tenant, runtime role cannot delete or alter versions)
+  - [ ] Postgres template store contract with `TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL` (type-checked against a stub only; never run here)
+  - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox)
+- Not included: logo/signature images (needs COS-011 uploads), PDF rendering, real QR, certificate numbers, issuing (M4b+). Open decisions for M4b: PDF renderer (brain suggests a pinned Chromium) and the certificate number format/scope.
+
 ### COS-009 — Institute application schema, state machine and audit log — Built (needs your verification)
 - Priority: P0
 - Delivered: migrations 0004 (audit_logs, append-only) and 0005 (institute_applications); `applications` domain + service; memory and Postgres stores sharing one contract; applicant API (`/api/v1/institute-applications`); audit events for every change; CLI actions audited.

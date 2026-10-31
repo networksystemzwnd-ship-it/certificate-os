@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.7.0
+  version: 0.8.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -424,6 +424,136 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-presets:
+    get:
+      summary: Ready-made template starting points and the allowed text placeholders (requires templates.read)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '200': { description: "OK: {presets: [{preset, label, config}], placeholders: [...]}" }
+        '403': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-templates:
+    get:
+      summary: List templates with their current version (requires templates.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: q, in: query, schema: { type: string } }
+        - { name: archived, in: query, schema: { type: string, enum: [only, all] }, description: Default lists active templates only }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+      responses:
+        '200': { description: "OK: {templates: [...], has_more, limit, offset}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Create a template (version 1) from a validated configuration (requires templates.write)
+      description: >
+        `config` is a preset plus fixed fields (preset, orientation, accent_color #rrggbb, title, body with the
+        allowed {{placeholders}}, signatory, footer, show_* switches). There is no free-form HTML or CSS.
+        Duplicate active names (case-insensitive) are refused with 409.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name, config], properties: { name: { type: string }, config: { type: object } } }
+      responses:
+        '201': { description: "Created: {template}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-templates/preview:
+    post:
+      summary: Render an unsaved draft configuration with sample data (requires templates.read)
+      description: Returns self-contained HTML (all text escaped, no script, no external resource). Show it in a sandboxed iframe. Never uses real student data.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [config], properties: { config: { type: object } } }
+      responses:
+        '200': { description: "OK: {html}" }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-templates/{tid}:
+    get:
+      summary: A template with its current configuration and all version summaries (requires templates.read)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: tid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {template}" }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Rename a template (requires templates.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: tid, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [name], properties: { name: { type: string } } }
+      responses:
+        '200': { description: "OK: {template}" }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Archive a template (never hard-deleted; existing versions stay readable) (requires templates.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: tid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {template}" }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-templates/{tid}/restore:
+    post:
+      summary: Restore an archived template (409 when its name is now taken) (requires templates.write)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: tid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {template}" }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-templates/{tid}/versions:
+    post:
+      summary: Save a new immutable version (becomes the current one) (requires templates.write)
+      description: Versions are append-only; earlier versions never change. 409 for an archived template or at the 100-version limit.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: tid, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [config], properties: { config: { type: object } } }
+      responses:
+        '201': { description: "Created: {version}" }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-templates/{tid}/versions/{n}:
+    get:
+      summary: One stored version with its configuration (requires templates.read)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: tid, in: path, required: true, schema: { type: string } }, { name: "n", in: path, required: true, schema: { type: integer, minimum: 1, maximum: 100 } }]
+      responses:
+        '200': { description: "OK: {version}" }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/certificate-templates/{tid}/preview:
+    post:
+      summary: Preview a stored version (default current) or, with `config`, an unsaved draft for this template (requires templates.read)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: tid, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { version: { type: integer }, config: { type: object } } }
+      responses:
+        '200': { description: "OK: {html}" }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /api/v1/institute-applications:
     post:
       summary: Start an application (draft). Any subset of fields; provided fields are validated. One open application per user.

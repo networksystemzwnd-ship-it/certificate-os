@@ -51,7 +51,7 @@ func TestPgStoreContract(t *testing.T) {
 	tenants, users, reader := tenantpg.New(owner), authpg.New(owner), auditpg.New(owner)
 	n := 0
 	stafftest.RunStoreContract(t, func(t *testing.T) stafftest.Harness {
-		if _, err := owner.Exec(ctx, `TRUNCATE institute_invitations, student_imports, enrollments, students, batches, courses, institute_memberships, institute_applications, institutes, users, audit_logs CASCADE`); err != nil {
+		if _, err := owner.Exec(ctx, `TRUNCATE institute_invitations, certificate_template_versions, certificate_templates, student_imports, enrollments, students, batches, courses, institute_memberships, institute_applications, institutes, users, audit_logs CASCADE`); err != nil {
 			t.Fatal(err)
 		}
 		st := pgstore.New(rt)

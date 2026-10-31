@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, Loading } from '../../components/States';
 import { BatchesPage, CoursesPage, StudentsPage } from '../records/Records';
 import { ImportWizard } from '../records/ImportWizard';
 import { StaffPage } from '../staff/Staff';
+import { TemplatesPage } from '../templates/Templates';
 import { useSession } from '../auth/session';
 
 interface InstituteSummary {
@@ -20,7 +21,7 @@ interface InstituteDetail extends InstituteSummary {
   permissions?: string[];
 }
 
-type Tab = 'students' | 'courses' | 'batches' | 'import' | 'staff';
+type Tab = 'students' | 'courses' | 'batches' | 'templates' | 'import' | 'staff';
 
 function Detail({ id }: { id: string }) {
   const { user } = useSession();
@@ -42,7 +43,7 @@ function Detail({ id }: { id: string }) {
   }
   const inst = state.data.institute;
   const can = (p: string) => inst.permissions?.includes(p) ?? false;
-  const tabs: Tab[] = ['students', 'courses', 'batches', ...(can('students.import') ? (['import'] as Tab[]) : []), ...(can('staff.manage') ? (['staff'] as Tab[]) : [])];
+  const tabs: Tab[] = ['students', 'courses', 'batches', ...(can('templates.read') ? (['templates'] as Tab[]) : []), ...(can('students.import') ? (['import'] as Tab[]) : []), ...(can('staff.manage') ? (['staff'] as Tab[]) : [])];
   return (
     <section aria-labelledby="inst-name">
       <h2 id="inst-name">{inst.name}</h2>
@@ -65,6 +66,7 @@ function Detail({ id }: { id: string }) {
       {tab === 'students' && <StudentsPage canWrite={can('students.write')} />}
       {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
       {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
+      {tab === 'templates' && can('templates.read') && <TemplatesPage canWrite={can('templates.write')} />}
       {tab === 'import' && can('students.import') && <ImportWizard />}
       {tab === 'staff' && can('staff.manage') && <StaffPage selfEmail={user?.email} />}
     </section>
