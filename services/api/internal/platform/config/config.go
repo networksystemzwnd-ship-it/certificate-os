@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
@@ -24,7 +25,15 @@ type Config struct {
 	SessionTTL     time.Duration // absolute session lifetime
 	CookieSecure   bool          // derived: true in production
 
-	PublicBaseURL    string // origin used in certificate QR codes (verification links); defaults to WebOrigin
+	PublicBaseURL string // origin used in certificate QR codes (verification links); defaults to WebOrigin
+	// Email delivery (M5b). EmailProvider is "none" (sending disabled) or "smtp". SMTPPassword is a secret: never log it.
+	EmailProvider    string
+	EmailFrom        string // sender address, e.g. "Certificates <no-reply@example.com>"
+	SMTPHost         string
+	SMTPPort         int
+	SMTPUsername     string
+	SMTPPassword     string
+	SMTPTLS          string // "starttls" (default), "tls" (implicit, port 465) or "none" (local development only)
 	PDFChromePath    string // absolute path of a pinned headless Chromium; empty disables certificate issuing
 	PDFNoSandbox     bool   // pass --no-sandbox to Chromium (only for containers running as root)
 	PDFMaxConcurrent int    // simultaneous PDF renders
@@ -91,6 +100,42 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		errs = append(errs, errors.New("PDF_MAX_CONCURRENT must be an integer between 1 and 16"))
 	}
 	cfg.PDFMaxConcurrent = conc
+
+	cfg.EmailProvider = get("EMAIL_PROVIDER", "none")
+	switch cfg.EmailProvider {
+	case "none":
+	case "smtp":
+		cfg.EmailFrom = get("EMAIL_FROM", "")
+		if a, err := mail.ParseAddress(cfg.EmailFrom); err != nil || a.Address == "" || strings.ContainsAny(cfg.EmailFrom, "\r\n") {
+			errs = append(errs, errors.New("EMAIL_FROM must be a valid sender address when EMAIL_PROVIDER=smtp"))
+		}
+		cfg.SMTPHost = get("SMTP_HOST", "")
+		if cfg.SMTPHost == "" || strings.ContainsAny(cfg.SMTPHost, " /\r\n") {
+			errs = append(errs, errors.New("SMTP_HOST must be a host name when EMAIL_PROVIDER=smtp"))
+		}
+		port, err := strconv.Atoi(get("SMTP_PORT", "587"))
+		if err != nil || port < 1 || port > 65535 {
+			errs = append(errs, errors.New("SMTP_PORT must be a port number"))
+		}
+		cfg.SMTPPort = port
+		cfg.SMTPUsername = get("SMTP_USERNAME", "")
+		cfg.SMTPPassword = get("SMTP_PASSWORD", "")
+		cfg.SMTPTLS = get("SMTP_TLS", "starttls")
+		switch cfg.SMTPTLS {
+		case "starttls", "tls":
+		case "none":
+			if cfg.Env == "production" {
+				errs = append(errs, errors.New("SMTP_TLS=none is for local development only; use starttls or tls in production"))
+			}
+		default:
+			errs = append(errs, errors.New("SMTP_TLS must be starttls, tls or none"))
+		}
+		if (cfg.SMTPUsername == "") != (cfg.SMTPPassword == "") {
+			errs = append(errs, errors.New("SMTP_USERNAME and SMTP_PASSWORD must be set together"))
+		}
+	default:
+		errs = append(errs, errors.New("EMAIL_PROVIDER must be none or smtp"))
+	}
 
 	hours, err := strconv.Atoi(get("SESSION_TTL_HOURS", "12"))
 	if err != nil || hours < 1 || hours > 24*30 {

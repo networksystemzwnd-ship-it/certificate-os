@@ -144,6 +144,23 @@ Template: see `PROJECT_BRAIN.md` §12.5.
 - Open for you: D-160 (public fields), D-161 (no public PDF download).
 - Not included: email delivery with attempts and retry (M5b), institute-configurable public fields (P1), a shared rate limiter for several API replicas (D-108).
 
+### M5b — Email delivery — Built (needs your verification)
+- Priority: P0
+- Delivered: migration 0014 (`deliveries`, `delivery_attempts`, PII-free `delivery_queue` with a narrow worker-scan policy, guard trigger, no deletes); `delivery` package: provider-independent `mail.Mailer` with a standard-library SMTP adapter (STARTTLS / implicit TLS / none for local use, PLAIN auth, MIME with PDF attachment, header-injection safe) and a fake; store (memory + Postgres, one shared contract); service and background worker (claim with token and lease, backoff, bounded attempts, manual retry, suspended institutes wait); routes `GET /email/status`, `POST/GET /certificates/{id}/deliveries`, `GET /deliveries`, `GET /deliveries/{id}`, `POST /deliveries/{id}/retry`, `POST /bulk-jobs/{id}/deliveries`; config `EMAIL_PROVIDER`, `EMAIL_FROM`, `SMTP_*`; UI: "Email" button per certificate, "Email deliveries" panel with status and Retry, "Email all" for a bulk job; decisions D-165..D-171; OpenAPI 0.12.0.
+- Acceptance:
+  - [x] issuing is independent of delivery; revoked/replaced certificates are never mailed (service tests, mutation-checked)
+  - [x] statuses never claim "delivered"; only `accepted` after the server accepts the message
+  - [x] transient failures retry with backoff, permanent ones stop at once, attempts are bounded, manual retry works with the current address, shutdown does not burn an attempt
+  - [x] error text and addresses never reach the database, the audit log or API responses (recipients masked)
+  - [x] SMTP adapter verified against an in-process SMTP server: plain, STARTTLS with verified certificate, implicit TLS, authentication, STARTTLS-required never falls back to clear text, untrusted certificate refused, 4xx/5xx/timeout/refused classification
+  - [x] permission matrix (staff and the issue grant cannot send; admin/owner can), suspended institute read-only, institute isolation, bulk "email all" never mails anyone twice (HTTP tests, mutation-checked)
+  - [x] migration 0014 and the store's SQL verified on real PostgreSQL 16 as the restricted role (RLS, worker scan sees ids only, one active delivery per certificate, state-machine trigger, accepted is final, no DELETE, down/up cycle)
+  - [ ] Postgres delivery store through real pgx: `delivery/pgstore` contract test with `TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL` (type-checked against a stub only)
+  - [ ] frontend tests/lint/typecheck (never run in the build sandbox; syntax check only)
+  - [ ] a REAL send through your provider (or Mailpit): not possible in the build sandbox. Follow `docs/runbooks/email-delivery.md`.
+- Open for you: provider choice (brain §17 Q9), D-167 (at-least-once sending is acceptable?).
+- Not included: bounce / delivery-receipt handling (needs a provider), WhatsApp/SMS (post-MVP), a separate worker process (D-155), email templates per institute.
+
 ### M4c — Bulk certificate issuing — Built (needs your verification)
 - Priority: P0 (ZIP export P1)
 - Delivered: migration 0012 (`bulk_jobs`, `bulk_job_items`, RLS, one active job per institute, no deletes); `certificates.Jobs` service and `JobStore` (memory + Postgres, one shared contract); runner with token + lease, resume, retry-failed, cancel; routes `GET /certificates/bulk-preview`, `POST /certificates/bulk`, `GET /bulk-jobs`, `GET /bulk-jobs/{id}`, `/items`, `POST /bulk-jobs/{id}/retry-failed|resume|cancel`, `GET /bulk-jobs/{id}/export` (ZIP + manifest); new permission `certificates.export`; "Issue a whole batch" panel in the Certificates tab; decisions D-152..D-159; OpenAPI 0.10.0.

@@ -54,3 +54,20 @@ export const bulkApi = {
   cancel: (id: string) => api<{ job: BulkJob }>(`/api/v1/bulk-jobs/${id}/cancel`, { method: 'POST' }),
   exportZip: (id: string) => apiBlob(`/api/v1/bulk-jobs/${id}/export`),
 };
+
+export type DeliveryStatus = 'queued' | 'sending' | 'accepted' | 'failed';
+export interface Delivery {
+  id: string; certificate_id: string; certificate_number: string; channel: 'email'; recipient: string; status: DeliveryStatus;
+  attempts: number; max_attempts: number; next_attempt_at: string | null; last_error?: string; created_at: string; finished_at: string | null;
+}
+export interface BulkDeliveryResult {
+  queued: number; skipped_no_email: number; skipped_already_delivered: number; skipped_in_progress: number; skipped_not_deliverable: number;
+}
+
+export const deliveriesApi = {
+  status: () => api<{ enabled: boolean }>('/api/v1/email/status'),
+  list: (limit = 10) => api<{ deliveries: Delivery[]; has_more: boolean }>(`/api/v1/deliveries${qs({ limit })}`),
+  send: (certificateId: string) => api<{ delivery: Delivery }>(`/api/v1/certificates/${certificateId}/deliveries`, { method: 'POST' }),
+  retry: (id: string) => api<{ delivery: Delivery }>(`/api/v1/deliveries/${id}/retry`, { method: 'POST' }),
+  sendJob: (jobId: string) => api<BulkDeliveryResult>(`/api/v1/bulk-jobs/${jobId}/deliveries`, { method: 'POST' }),
+};

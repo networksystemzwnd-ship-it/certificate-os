@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.11.0
+  version: 0.12.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -671,6 +671,104 @@ paths:
         '200': { description: "OK: {verification: {status, certificate_number, institute_name, student_name, course_name, issue_date, revoked_at?, replaced_by?}}" }
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
+  /api/v1/email/status:
+    get:
+      summary: Whether this server can send certificate emails (requires certificates.read)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      responses:
+        '200': { description: "OK: {enabled: boolean}. false when EMAIL_PROVIDER=none." }
+        '403': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates/{id}/deliveries:
+    post:
+      summary: Queue an email with the certificate PDF to the student's address on file (requires certificates.deliver)
+      description: >
+        Only for an issued certificate; the recipient is the student's CURRENT email address. 202: the delivery is
+        queued, NOT sent; a background worker sends it. Its status becomes `accepted` only when the mail server takes
+        the message (never "delivered": that cannot be known). 404 unknown, foreign, revoked, replaced or unissued
+        certificate; 409 when a delivery for it is already in progress or it was sent too many times (10); 422 when
+        the student has no email address; 503 `email_unavailable` when sending is not configured. Blocked for a
+        suspended institute (403).
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '202': { description: "Queued: {delivery}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+    get:
+      summary: Deliveries of one certificate, newest first (requires certificates.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [queued, sending, accepted, failed] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        '200': { description: "OK: {deliveries, has_more, limit}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/deliveries:
+    get:
+      summary: Recent deliveries of the institute, newest first (requires certificates.read)
+      description: >
+        Each delivery: id, certificate_id, certificate_number, channel (`email`), recipient (MASKED, `a***@example.com`),
+        status (`queued`, `sending`, `accepted`, `failed`), attempts, max_attempts, next_attempt_at, last_error (a short
+        code such as `connect_failed`, `recipient_rejected`; never provider text), created_at, finished_at.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: status, in: query, schema: { type: string, enum: [queued, sending, accepted, failed] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        '200': { description: "OK: {deliveries, has_more, limit}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/deliveries/{id}:
+    get:
+      summary: One delivery with its attempt log (requires certificates.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: "OK: {delivery} with attempt_log [{attempt, status, error_code?, finished_at}]" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/deliveries/{id}/retry:
+    post:
+      summary: Queue a FAILED delivery again, to the student's current address, with a fresh round of attempts (requires certificates.deliver)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '202': { description: "Queued: {delivery}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs/{id}/deliveries:
+    post:
+      summary: Queue emails for every certificate a bulk job issued (requires certificates.deliver)
+      description: >
+        Skips, and counts, certificates whose student has no email address, that were already delivered (accepted),
+        that have a delivery in progress, or that are no longer deliverable. A second call therefore never mails
+        anyone twice. 202: {queued, skipped_no_email, skipped_already_delivered, skipped_in_progress, skipped_not_deliverable}.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '202': { description: Queued }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
   /api/v1/certificates/bulk-preview:
     get:
       summary: Count what a bulk job for a batch would do, before anything is created (requires certificates.issue)

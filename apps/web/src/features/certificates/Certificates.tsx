@@ -4,7 +4,8 @@ import { useAsync } from '../../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../../components/States';
 import { studentsApi, type Student } from '../records/api';
 import { templatesApi } from '../templates/api';
-import { certificatesApi, type Certificate } from './api';
+import { certificatesApi, deliveriesApi, type Certificate } from './api';
+import { DeliveryPanel } from './Delivery';
 import { BulkPanel } from './Bulk';
 
 const STATUS_LABEL: Record<Certificate['status'], string> = {
@@ -113,7 +114,7 @@ function IssuePanel({ onIssued }: { onIssued: (c: Certificate) => void }) {
   );
 }
 
-function Row({ cert, canRevoke, canReplace, onChanged }: { cert: Certificate; canRevoke: boolean; canReplace: boolean; onChanged: () => void }) {
+function Row({ cert, canRevoke, canReplace, canEmail, onEmailed, onChanged }: { cert: Certificate; canRevoke: boolean; canReplace: boolean; canEmail: boolean; onEmailed: (c: Certificate) => void; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const download = async () => {
@@ -163,6 +164,18 @@ function Row({ cert, canRevoke, canReplace, onChanged }: { cert: Certificate; ca
       setBusy(false);
     }
   };
+  const email = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await deliveriesApi.send(cert.id);
+      onEmailed(cert);
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
   const hasPdf = cert.status === 'issued' || cert.status === 'revoked';
   return (
     <tr>
@@ -173,6 +186,7 @@ function Row({ cert, canRevoke, canReplace, onChanged }: { cert: Certificate; ca
       <td>
         {hasPdf && <button type="button" disabled={busy} onClick={download}>Download {cert.certificate_number}</button>}{' '}
         {canRevoke && cert.status === 'issued' && <button type="button" disabled={busy} onClick={revoke}>Revoke {cert.certificate_number}</button>}{' '}
+        {canEmail && cert.status === 'issued' && <button type="button" disabled={busy} onClick={email}>Email {cert.certificate_number}</button>}{' '}
         {canReplace && cert.status === 'issued' && <button type="button" disabled={busy} onClick={replace}>Replace {cert.certificate_number}</button>}
         {error && <span role="alert"> {error}</span>}
       </td>
@@ -180,18 +194,23 @@ function Row({ cert, canRevoke, canReplace, onChanged }: { cert: Certificate; ca
   );
 }
 
-export function CertificatesPage({ canIssue, canRevoke, canExport = false }: { canIssue: boolean; canRevoke: boolean; canExport?: boolean }) {
+export function CertificatesPage({ canIssue, canRevoke, canExport = false, canDeliver = false }: { canIssue: boolean; canRevoke: boolean; canExport?: boolean; canDeliver?: boolean }) {
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const [applied, setApplied] = useState('');
   const list = useAsync(() => certificatesApi.list({ status, q: applied }), [status, applied]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [deliveryTick, setDeliveryTick] = useState(0);
+  // Email is offered only when the server says it can send; if the question fails the buttons stay hidden.
+  const emailStatus = useAsync(() => deliveriesApi.status(), []);
+  const emailEnabled = emailStatus.state.status === 'success' && emailStatus.state.data.enabled;
+  const emailed = (c: Certificate) => { setNotice(`Queued an email for ${c.certificate_number}. It will be sent shortly; see Email deliveries below.`); setDeliveryTick((n) => n + 1); };
 
   return (
     <section aria-labelledby="certs-h">
       <h3 id="certs-h">Certificates</h3>
       {canIssue && <IssuePanel onIssued={(c) => { setNotice(`Issued ${c.certificate_number} for ${c.student_name}.`); list.retry(); }} />}
-      {canIssue && <BulkPanel canExport={canExport} onChanged={list.retry} />}
+      {canIssue && <BulkPanel canExport={canExport} canEmail={canDeliver && emailEnabled} onEmailed={() => setDeliveryTick((n) => n + 1)} onChanged={list.retry} />}
       {notice && <p role="status">{notice}</p>}
       <form onSubmit={(e) => { e.preventDefault(); setApplied(q); }} aria-label="Filter certificates">
         <label htmlFor="cert-q">Search</label>{' '}
@@ -212,11 +231,15 @@ export function CertificatesPage({ canIssue, canRevoke, canExport = false }: { c
             <thead><tr><th scope="col">Number</th><th scope="col">Student</th><th scope="col">Course</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
             <tbody>
               {list.state.data.certificates.map((c) => (
-                <Row key={c.id} cert={c} canRevoke={canRevoke} canReplace={canIssue && canRevoke} onChanged={list.retry} />
+                <Row key={c.id} cert={c} canRevoke={canRevoke} canReplace={canIssue && canRevoke} canEmail={canDeliver && emailEnabled} onEmailed={emailed} onChanged={list.retry} />
               ))}
             </tbody>
           </table>
         ))}
+      {canDeliver && emailStatus.state.status === 'success' && !emailEnabled && (
+        <p role="status"><small>Sending certificates by email is not set up on this server yet. Ask your administrator to configure it.</small></p>
+      )}
+      {emailEnabled && <DeliveryPanel canDeliver={canDeliver} refreshKey={deliveryTick} />}
     </section>
   );
 }

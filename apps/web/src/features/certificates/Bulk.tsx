@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../lib/api';
 import { batchesApi, type Batch } from '../records/api';
 import { templatesApi, type Template } from '../templates/api';
-import { bulkApi, isActive, type BulkItem, type BulkJob, type BulkPreview, type JobStatus } from './api';
+import { bulkApi, deliveriesApi, isActive, type BulkItem, type BulkJob, type BulkPreview, type JobStatus } from './api';
 
 const STATUS_LABEL: Record<JobStatus, string> = {
   queued: 'Waiting to start', processing: 'Issuing…', completed: 'Completed', completed_with_errors: 'Completed with errors',
@@ -27,7 +27,8 @@ function Progress({ job }: { job: BulkJob }) {
   );
 }
 
-function JobView({ job, canExport, reload, onChanged }: { job: BulkJob; canExport: boolean; reload: () => void; onChanged: () => void }) {
+function JobView({ job, canExport, canEmail, onEmailed, reload, onChanged }: { job: BulkJob; canExport: boolean; canEmail: boolean; onEmailed: () => void; reload: () => void; onChanged: () => void }) {
+  const [emailNote, setEmailNote] = useState<string | null>(null);
   const [failed, setFailed] = useState<BulkItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +81,27 @@ function JobView({ job, canExport, reload, onChanged }: { job: BulkJob; canExpor
     }
   };
 
+  const emailAll = async () => {
+    setBusy(true);
+    setError(null);
+    setEmailNote(null);
+    try {
+      const r = await deliveriesApi.sendJob(job.id);
+      const skipped = [
+        r.skipped_no_email > 0 && `${r.skipped_no_email} without an email address`,
+        r.skipped_already_delivered > 0 && `${r.skipped_already_delivered} already emailed`,
+        r.skipped_in_progress > 0 && `${r.skipped_in_progress} already being sent`,
+        r.skipped_not_deliverable > 0 && `${r.skipped_not_deliverable} not available to send`,
+      ].filter(Boolean);
+      setEmailNote(`Queued ${r.queued} email${r.queued === 1 ? '' : 's'}${skipped.length ? `. Skipped: ${skipped.join(', ')}` : ''}.`);
+      onEmailed();
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const active = isActive(job.status);
   return (
     <div aria-label="Bulk job">
@@ -107,13 +129,17 @@ function JobView({ job, canExport, reload, onChanged }: { job: BulkJob; canExpor
       {!active && canExport && job.succeeded > 0 && (
         <p><button type="button" disabled={busy} onClick={download}>Download all as ZIP</button></p>
       )}
+      {!active && canEmail && job.succeeded > 0 && (
+        <p><button type="button" disabled={busy} onClick={emailAll}>Email all {job.succeeded} certificate{job.succeeded === 1 ? '' : 's'}</button></p>
+      )}
+      {emailNote && <p role="status">{emailNote}</p>}
       {error && <p role="alert">{error}</p>}
     </div>
   );
 }
 
 /** Issue a whole batch: preview, start, watch progress, retry what failed, download the PDFs as a ZIP. */
-export function BulkPanel({ canExport, onChanged, pollMs = 2000 }: { canExport: boolean; onChanged: () => void; pollMs?: number }) {
+export function BulkPanel({ canExport, canEmail = false, onEmailed = () => {}, onChanged, pollMs = 2000 }: { canExport: boolean; canEmail?: boolean; onEmailed?: () => void; onChanged: () => void; pollMs?: number }) {
   const [open, setOpen] = useState(false);
   return (
     <section aria-labelledby="bulk-h">
@@ -121,13 +147,13 @@ export function BulkPanel({ canExport, onChanged, pollMs = 2000 }: { canExport: 
       {!open ? (
         <button type="button" onClick={() => setOpen(true)}>Issue for a batch…</button>
       ) : (
-        <BulkBody canExport={canExport} onChanged={onChanged} pollMs={pollMs} />
+        <BulkBody canExport={canExport} canEmail={canEmail} onEmailed={onEmailed} onChanged={onChanged} pollMs={pollMs} />
       )}
     </section>
   );
 }
 
-function BulkBody({ canExport, onChanged, pollMs }: { canExport: boolean; onChanged: () => void; pollMs: number }) {
+function BulkBody({ canExport, canEmail, onEmailed, onChanged, pollMs }: { canExport: boolean; canEmail: boolean; onEmailed: () => void; onChanged: () => void; pollMs: number }) {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [batchId, setBatchId] = useState('');
@@ -243,7 +269,7 @@ function BulkBody({ canExport, onChanged, pollMs }: { canExport: boolean; onChan
           </button>
         </div>
       )}
-      {job && <JobView job={job} canExport={canExport} reload={reload} onChanged={onChanged} />}
+      {job && <JobView job={job} canExport={canExport} canEmail={canEmail} onEmailed={onEmailed} reload={reload} onChanged={onChanged} />}
       {error && <p role="alert">{error}</p>}
     </div>
   );

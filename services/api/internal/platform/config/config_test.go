@@ -140,3 +140,38 @@ func TestCertificateRenderingSettings(t *testing.T) {
 		t.Error("http PUBLIC_BASE_URL accepted in production")
 	}
 }
+
+func TestEmailSettings(t *testing.T) {
+	with := func(extra map[string]string) (Config, error) {
+		m := map[string]string{"DATABASE_URL": "postgres://x"}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return Load(lookupFrom(m))
+	}
+	if cfg, err := with(nil); err != nil || cfg.EmailProvider != "none" {
+		t.Fatalf("default: %+v %v", cfg, err)
+	}
+	cfg, err := with(map[string]string{"EMAIL_PROVIDER": "smtp", "EMAIL_FROM": "Certificates <no-reply@example.com>", "SMTP_HOST": "smtp.example.com", "SMTP_USERNAME": "u", "SMTP_PASSWORD": "p"})
+	if err != nil || cfg.SMTPPort != 587 || cfg.SMTPTLS != "starttls" || cfg.SMTPPassword != "p" {
+		t.Fatalf("smtp: %+v %v", cfg, err)
+	}
+	good := map[string]string{"EMAIL_PROVIDER": "smtp", "EMAIL_FROM": "no-reply@example.com", "SMTP_HOST": "smtp.example.com"}
+	bad := map[string]map[string]string{
+		"unknown provider": {"EMAIL_PROVIDER": "pigeon"},
+		"missing from":     {"EMAIL_PROVIDER": "smtp", "SMTP_HOST": "h"},
+		"header injection": {"EMAIL_PROVIDER": "smtp", "SMTP_HOST": "h", "EMAIL_FROM": "a@example.com\r\nBcc: x@y.z"},
+		"missing host":     {"EMAIL_PROVIDER": "smtp", "EMAIL_FROM": "a@example.com"},
+		"bad port":         {"EMAIL_PROVIDER": "smtp", "EMAIL_FROM": "a@example.com", "SMTP_HOST": "h", "SMTP_PORT": "99999"},
+		"bad tls":          {"EMAIL_PROVIDER": "smtp", "EMAIL_FROM": "a@example.com", "SMTP_HOST": "h", "SMTP_TLS": "maybe"},
+		"half credentials": {"EMAIL_PROVIDER": "smtp", "EMAIL_FROM": "a@example.com", "SMTP_HOST": "h", "SMTP_USERNAME": "u"},
+	}
+	for name, extra := range bad {
+		if _, err := with(extra); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	if _, err := with(map[string]string{"SMTP_TLS": "none", "EMAIL_PROVIDER": good["EMAIL_PROVIDER"], "EMAIL_FROM": good["EMAIL_FROM"], "SMTP_HOST": good["SMTP_HOST"]}); err != nil {
+		t.Errorf("plain SMTP for local development must be allowed: %v", err)
+	}
+}

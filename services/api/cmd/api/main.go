@@ -30,6 +30,9 @@ import (
 	"github.com/certificate-os/api/internal/auth/pgstore"
 	"github.com/certificate-os/api/internal/certificates"
 	certspg "github.com/certificate-os/api/internal/certificates/pgstore"
+	"github.com/certificate-os/api/internal/delivery"
+	"github.com/certificate-os/api/internal/delivery/mail"
+	deliverypg "github.com/certificate-os/api/internal/delivery/pgstore"
 	"github.com/certificate-os/api/internal/imports"
 	importspg "github.com/certificate-os/api/internal/imports/pgstore"
 	"github.com/certificate-os/api/internal/pdf"
@@ -189,6 +192,19 @@ func run(args []string) error {
 	bulkJobs := certificates.NewJobs(ctx, certsSvc, certsStore, func(msg string, args ...any) { log.Error(msg, args...) })
 	bulkJobs.Audit = auditStore
 	(&certificates.Handler{Svc: certsSvc, Jobs: bulkJobs, Log: log, Tenancy: tenantH}).Register(mux)
+	// Email delivery (M5b). With EMAIL_PROVIDER=none the routes still exist and answer 503 "email_unavailable", and
+	// no worker runs. The worker stops with ctx; a delivery it was sending is picked up again after its lease.
+	var mailer mail.Mailer
+	if cfg.EmailProvider == "smtp" {
+		mailer = &mail.SMTP{Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword, Mode: cfg.SMTPTLS}
+		log.Info("email delivery enabled", "provider", "smtp", "host", cfg.SMTPHost, "port", cfg.SMTPPort, "tls", cfg.SMTPTLS)
+	} else {
+		log.Warn("email delivery is disabled (EMAIL_PROVIDER=none): sending certificates by email returns 503 until it is configured")
+	}
+	deliverySvc := delivery.NewService(deliverypg.New(pool), certsStore, mailer, cfg.EmailFrom, cfg.PublicBaseURL, log)
+	(&delivery.Handler{Svc: deliverySvc, JobCertificates: delivery.JobCertificates(bulkJobs), Log: log, Tenancy: tenantH}).Register(mux)
+	workerDone := make(chan struct{})
+	go func() { defer close(workerDone); deliverySvc.Run(ctx, 5*time.Second) }()
 	// Public verification: no authentication, narrow response, per-IP rate limit (M5a).
 	verifyH := verification.NewHandler(verification.NewService(verificationpg.New(pool, func(msg string, args ...any) { log.Warn(msg, args...) })), log)
 	verifyH.Register(mux)
@@ -224,6 +240,10 @@ func run(args []string) error {
 		defer cancel()
 		err := srv.Shutdown(shutdownCtx)
 		bulkJobs.Wait(shutdownCtx) // let a running render finish; unfinished jobs stay resumable
+		select {
+		case <-workerDone:
+		case <-shutdownCtx.Done():
+		}
 		return err
 	}
 	return nil
