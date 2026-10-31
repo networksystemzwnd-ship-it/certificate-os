@@ -9,6 +9,7 @@ import { StaffPage } from '../staff/Staff';
 import { TemplatesPage } from '../templates/Templates';
 import { CertificatesPage } from '../certificates/Certificates';
 import { useSession } from '../auth/session';
+import { Overview } from './Overview';
 
 interface InstituteSummary {
   id: string;
@@ -22,11 +23,11 @@ interface InstituteDetail extends InstituteSummary {
   permissions?: string[];
 }
 
-type Tab = 'students' | 'courses' | 'batches' | 'templates' | 'certificates' | 'import' | 'staff';
+type Tab = 'overview' | 'students' | 'courses' | 'batches' | 'templates' | 'certificates' | 'import' | 'staff';
 
 function Detail({ id }: { id: string }) {
   const { user } = useSession();
-  const [tab, setTab] = useState<Tab>('students');
+  const [tab, setTab] = useState<Tab>('overview');
   const { state, retry } = useAsync(() => {
     setActiveInstitute(id); // the server still verifies membership on every request
     return api<{ institute: InstituteDetail }>('/api/v1/institute');
@@ -44,7 +45,7 @@ function Detail({ id }: { id: string }) {
   }
   const inst = state.data.institute;
   const can = (p: string) => inst.permissions?.includes(p) ?? false;
-  const tabs: Tab[] = ['students', 'courses', 'batches', ...(can('templates.read') ? (['templates'] as Tab[]) : []), ...(can('certificates.read') ? (['certificates'] as Tab[]) : []), ...(can('students.import') ? (['import'] as Tab[]) : []), ...(can('staff.manage') ? (['staff'] as Tab[]) : [])];
+  const tabs: Tab[] = ['overview', 'students', 'courses', 'batches', ...(can('templates.read') ? (['templates'] as Tab[]) : []), ...(can('certificates.read') ? (['certificates'] as Tab[]) : []), ...(can('students.import') ? (['import'] as Tab[]) : []), ...(can('staff.manage') ? (['staff'] as Tab[]) : [])];
   return (
     <section aria-labelledby="inst-name">
       <h2 id="inst-name">{inst.name}</h2>
@@ -64,6 +65,7 @@ function Detail({ id }: { id: string }) {
         ))}
       </nav>
       {/* Write actions are shown only when the server granted the capability; the API enforces it regardless. */}
+      {tab === 'overview' && <Overview />}
       {tab === 'students' && <StudentsPage canWrite={can('students.write')} />}
       {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
       {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}

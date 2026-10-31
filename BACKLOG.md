@@ -161,6 +161,17 @@ Template: see `PROJECT_BRAIN.md` §12.5.
 - Open for you: provider choice (brain §17 Q9), D-167 (at-least-once sending is acceptable?).
 - Not included: bounce / delivery-receipt handling (needs a provider), WhatsApp/SMS (post-MVP), a separate worker process (D-155), email templates per institute.
 
+### M6a — Dashboards — Built (needs your verification)
+- Priority: P0
+- Delivered: `dashboard` package (`GET /api/v1/dashboard`, `GET /api/v1/ops/dashboard`), Postgres queries, UI: Overview tab (now the first tab of the workspace) and Operations > Overview; decisions D-172, D-173; OpenAPI 0.13.0.
+- Acceptance:
+  - [x] institute figures are scoped to the caller's institute, sections follow permissions, student names only in the recent list (HTTP tests, mutation-checked)
+  - [x] platform overview limited to platform staff and contains no personal data; period validated
+  - [x] SQL verified on real PostgreSQL 16 as the restricted role (foreign tenant sees zero, platform queries read only global tables)
+  - [ ] `dashboard/pgstore` through real pgx (type-checked against a stub only; there is no store contract because the figures span other packages' tables)
+  - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
+- Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
+
 ### M4c — Bulk certificate issuing — Built (needs your verification)
 - Priority: P0 (ZIP export P1)
 - Delivered: migration 0012 (`bulk_jobs`, `bulk_job_items`, RLS, one active job per institute, no deletes); `certificates.Jobs` service and `JobStore` (memory + Postgres, one shared contract); runner with token + lease, resume, retry-failed, cancel; routes `GET /certificates/bulk-preview`, `POST /certificates/bulk`, `GET /bulk-jobs`, `GET /bulk-jobs/{id}`, `/items`, `POST /bulk-jobs/{id}/retry-failed|resume|cancel`, `GET /bulk-jobs/{id}/export` (ZIP + manifest); new permission `certificates.export`; "Issue a whole batch" panel in the Certificates tab; decisions D-152..D-159; OpenAPI 0.10.0.

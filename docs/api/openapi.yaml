@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.12.0
+  version: 0.13.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -671,6 +671,35 @@ paths:
         '200': { description: "OK: {verification: {status, certificate_number, institute_name, student_name, course_name, issue_date, revoked_at?, replaced_by?}}" }
         '404': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
+  /api/v1/dashboard:
+    get:
+      summary: Institute overview for a period (requires institute.read)
+      description: >
+        Tenant-scoped figures. Sections follow the member's permissions: `records` (active/archived students, active
+        batches) needs students.read; `certificates` (issued in period, valid, revoked, failed), `last_job`,
+        `deliveries` (emails requested in the period by current status) and `recent` (last 5 certificates) need
+        certificates.read. Works for a suspended institute (read-only). `days` is 7, 30 (default), 90 or 365; anything else is 422.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: days, in: query, schema: { type: integer, enum: [7, 30, 90, 365] } }
+      responses:
+        '200': { description: "OK: {dashboard: {days, since, records?, certificates?, last_job?, deliveries?, recent?}}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/ops/dashboard:
+    get:
+      summary: Platform overview, aggregate counts only (requires ops.applications.read)
+      description: >
+        Applications by status, institutes by status, and counts of audited events in the period (certificates issued
+        and revoked, bulk jobs started, emails accepted and failed) plus the latest application decisions (action and
+        time only). No student, recipient or institute-specific data.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ name: days, in: query, schema: { type: integer, enum: [7, 30, 90, 365] } }]
+      responses:
+        '200': { description: "OK: {dashboard: {days, since, applications, institutes, volume, recent_decisions}}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /api/v1/email/status:
     get:
       summary: Whether this server can send certificate emails (requires certificates.read)

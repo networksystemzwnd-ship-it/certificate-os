@@ -8,6 +8,7 @@ import { RequirePermission, RequireSession } from '../features/auth/guards';
 import { useSession } from '../features/auth/session';
 import { ApplicationDetail, ApplicationQueue } from '../features/ops/OpsApplications';
 import { OpsAudit } from '../features/ops/OpsAudit';
+import { OpsDashboard } from '../features/ops/OpsDashboard';
 import { OpsInstitutes } from '../features/ops/OpsInstitutes';
 import { WorkspaceView } from '../features/institute/Workspace';
 
@@ -53,6 +54,7 @@ function OperationsHome() {
       <h1>Operations</h1>
       <nav aria-label="Operations">
         {can('ops.applications.read') && <NavLink to="/ops" end className="nav-link">Applications</NavLink>}
+        {can('ops.applications.read') && <NavLink to="/ops/overview" className="nav-link">Overview</NavLink>}
         {can('ops.institutes.manage') && <NavLink to="/ops/institutes" className="nav-link">Institutes</NavLink>}
         {can('ops.audit.read') && <NavLink to="/ops/audit" className="nav-link">Audit log</NavLink>}
       </nav>
@@ -60,6 +62,7 @@ function OperationsHome() {
       <Routes>
         <Route index element={<RequirePermission permission="ops.applications.read"><ApplicationQueue /></RequirePermission>} />
         <Route path="applications/:id" element={<RequirePermission permission="ops.applications.read"><ApplicationDetail /></RequirePermission>} />
+        <Route path="overview" element={<RequirePermission permission="ops.applications.read"><OpsDashboard /></RequirePermission>} />
         <Route path="institutes" element={<RequirePermission permission="ops.institutes.manage"><OpsInstitutes /></RequirePermission>} />
         <Route path="audit" element={<RequirePermission permission="ops.audit.read"><OpsAudit /></RequirePermission>} />
         <Route path="*" element={<NotFoundPage />} />

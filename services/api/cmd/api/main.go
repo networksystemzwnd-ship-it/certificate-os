@@ -30,6 +30,8 @@ import (
 	"github.com/certificate-os/api/internal/auth/pgstore"
 	"github.com/certificate-os/api/internal/certificates"
 	certspg "github.com/certificate-os/api/internal/certificates/pgstore"
+	"github.com/certificate-os/api/internal/dashboard"
+	dashboardpg "github.com/certificate-os/api/internal/dashboard/pgstore"
 	"github.com/certificate-os/api/internal/delivery"
 	"github.com/certificate-os/api/internal/delivery/mail"
 	deliverypg "github.com/certificate-os/api/internal/delivery/pgstore"
@@ -205,6 +207,8 @@ func run(args []string) error {
 	(&delivery.Handler{Svc: deliverySvc, JobCertificates: delivery.JobCertificates(bulkJobs), Log: log, Tenancy: tenantH}).Register(mux)
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); deliverySvc.Run(ctx, 5*time.Second) }()
+	// Overviews (M6a): institute figures are tenant-scoped; platform figures are aggregate counts only.
+	(&dashboard.Handler{Store: dashboardpg.New(pool), Tenancy: tenantH, Authn: authH.Authenticate, Log: log}).Register(mux)
 	// Public verification: no authentication, narrow response, per-IP rate limit (M5a).
 	verifyH := verification.NewHandler(verification.NewService(verificationpg.New(pool, func(msg string, args ...any) { log.Warn(msg, args...) })), log)
 	verifyH.Register(mux)
