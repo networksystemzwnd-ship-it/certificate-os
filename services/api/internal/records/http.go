@@ -2,6 +2,7 @@ package records
 
 import (
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -40,6 +41,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("DELETE /api/v1/batches/{id}", g(w, h.archive(h.archiveBatch, true)))
 	mux.Handle("POST /api/v1/batches/{id}/restore", g(w, h.archive(h.archiveBatch, false)))
 
+	mux.Handle("GET /api/v1/students/export", g(auth.PermStudentsExport, http.HandlerFunc(h.exportStudents)))
 	mux.Handle("GET /api/v1/students", g(sr, http.HandlerFunc(h.listStudents)))
 	mux.Handle("POST /api/v1/students", g(sw, http.HandlerFunc(h.createStudent)))
 	mux.Handle("GET /api/v1/students/{id}", g(sr, http.HandlerFunc(h.getStudent)))
@@ -462,4 +464,39 @@ func (h *Handler) updateEnrollment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"enrollment": toEnrollment(e)})
+}
+
+func (h *Handler) exportStudents(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := StudentFilter{BatchID: q.Get("batch_id"), CourseID: q.Get("course_id"), Status: EnrollmentStatus(q.Get("status"))}
+	f.Q, f.Archived = q.Get("q"), Archive(q.Get("archived"))
+	if !f.Archived.Valid() {
+		bad(w, r, "archived", "Use only or all.")
+		return
+	}
+	if f.Status != "" && !f.Status.Valid() {
+		bad(w, r, "status", "Choose enrolled, completed or withdrawn.")
+		return
+	}
+	var started bool
+	err := h.Svc.ExportStudents(r.Context(), tenant(r), f, func(name string) io.Writer {
+		started = true
+		w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusOK)
+		return w
+	}, rid(r))
+	if err == nil {
+		return
+	}
+	if started {
+		panic(http.ErrAbortHandler) // never let a truncated CSV look complete
+	}
+	if errors.Is(err, ErrTooManyRows) {
+		httpx.WriteError(w, r, http.StatusUnprocessableEntity, httpx.CodeValidation, "Too many students to export at once. Narrow the filter.", nil)
+		return
+	}
+	h.fail(w, r, err, "")
 }

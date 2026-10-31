@@ -174,6 +174,7 @@ func run(args []string) error {
 	(&applications.Handler{Svc: applications.NewService(applicationspg.New(pool), auditStore), Log: log, Authn: authH.Authenticate}).Register(mux)
 	tenantH := &tenancy.Handler{Svc: &tenancy.Service{Store: tenantStore}, Log: log, Authn: authH.Authenticate}
 	recordsSvc := records.NewService(recordspg.New(pool))
+	recordsSvc.Audit = auditStore
 	(&records.Handler{Svc: recordsSvc, Log: log, Tenancy: tenantH}).Register(mux)
 	(&imports.Handler{Svc: imports.NewService(importspg.New(pool), recordsSvc), Log: log, Tenancy: tenantH}).Register(mux)
 	(&templates.Handler{Svc: templates.NewService(templatespg.New(pool)), Log: log, Tenancy: tenantH}).Register(mux)

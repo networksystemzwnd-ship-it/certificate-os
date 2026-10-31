@@ -1,4 +1,4 @@
-import { api, apiText } from '../../lib/api';
+import { api, apiBlob, apiText } from '../../lib/api';
 
 export interface Course { id: string; name: string; code: string; description: string; archived_at: string | null }
 export interface Batch { id: string; course_id: string; course_name: string; name: string; start_date: string; end_date: string; archived_at: string | null }
@@ -40,6 +40,8 @@ export const batchesApi = {
 export const studentsApi = {
   list: (p: { q?: string; course_id?: string; batch_id?: string; status?: string; archived?: string; limit?: number; offset?: number } = {}) =>
     api<{ students: Student[]; has_more: boolean }>(`/api/v1/students${qs(p)}`),
+  exportCsv: (p: { q?: string; course_id?: string; status?: string; archived?: string } = {}) =>
+    apiBlob(`/api/v1/students/export${qs(p)}`),
   get: (id: string) => api<{ student: Student }>(`/api/v1/students/${id}`),
   create: (b: Partial<Student>) => api<{ student: Student }>('/api/v1/students', { method: 'POST', ...json(b) }),
   update: (id: string, b: Partial<Student>) => api<{ student: Student }>(`/api/v1/students/${id}`, { method: 'PATCH', ...json(b) }),

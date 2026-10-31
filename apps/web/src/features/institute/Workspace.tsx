@@ -66,7 +66,7 @@ function Detail({ id }: { id: string }) {
       </nav>
       {/* Write actions are shown only when the server granted the capability; the API enforces it regardless. */}
       {tab === 'overview' && <Overview />}
-      {tab === 'students' && <StudentsPage canWrite={can('students.write')} />}
+      {tab === 'students' && <StudentsPage canWrite={can('students.write')} canExport={can('students.export')} />}
       {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
       {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
       {tab === 'templates' && can('templates.read') && <TemplatesPage canWrite={can('templates.write')} />}

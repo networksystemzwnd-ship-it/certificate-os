@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.14.0
+  version: 0.15.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -214,6 +214,14 @@ paths:
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/students/export:
+    get:
+      summary: Export students as CSV (students.export; blocked while suspended)
+      description: Honours q, course_id, batch_id, status and archived like the list. At most 20000 rows (422 otherwise). Cells that start with = + - @ are prefixed with an apostrophe. Audited as `student.exported` with the row count only.
+      responses:
+        '200': { description: CSV file, content: { text/csv: { schema: { type: string } } } }
+        '403': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
   /api/v1/students/{id}:
     get:

@@ -172,6 +172,14 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
 - Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
 
+### Student CSV export — Built (needs your verification)
+- Priority: P1
+- Delivered: `GET /api/v1/students/export` (D-177), button in the Students tab; OpenAPI 0.15.0.
+- Acceptance:
+  - [x] staff denied, admin allowed, suspended blocked, other institute's students never included, more than one page of rows, formula cells neutralised, audit without personal data (tests, mutation-checked)
+  - [ ] `students/export` through real Postgres (it reuses the existing list query) and the frontend test (never run in the build sandbox)
+- Not included: enrollments in the file, XLSX.
+
 ### M6b — Operations readiness — Built (needs your verification)
 - Priority: P0
 - Delivered: `/metrics` (D-174), delivery queue depth, `scripts/restore-check.sh` (D-175), runbooks `backup-restore`, `monitoring`, `deployment`, `docs/security-review.md`, DRAFT `docs/privacy-retention.md` (D-176); OpenAPI 0.14.0; `make restore-check`.

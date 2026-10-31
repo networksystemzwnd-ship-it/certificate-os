@@ -2,7 +2,11 @@ package records
 
 import (
 	"context"
+	"encoding/csv"
+	"errors"
+	"io"
 	"strings"
+	"time"
 
 	"github.com/certificate-os/api/internal/audit"
 	"github.com/certificate-os/api/internal/tenancy"
@@ -10,7 +14,11 @@ import (
 
 // Service holds the business rules. Callers pass the resolved tenancy.Tenant, so the scope and the
 // acting user always come from authenticated membership. Permission checks happen in the HTTP layer.
-type Service struct{ Store Store }
+type Service struct {
+	Store Store
+	// Audit records exports (optional; without it nothing is recorded).
+	Audit audit.Writer
+}
 
 func NewService(s Store) *Service { return &Service{Store: s} }
 
@@ -229,4 +237,65 @@ func (s *Service) UpdateEnrollment(ctx context.Context, t tenancy.Tenant, studen
 	}
 	meta := map[string]any{"student_id": studentID, "changed_fields": append([]string{}, fields...)}
 	return s.Store.UpdateEnrollment(ctx, t.Scope(), studentID, enrollmentID, p, event(t, "enrollment.updated", "enrollment", reqID, meta))
+}
+
+// MaxExportRows bounds one student export; a larger institute must narrow the filter.
+const MaxExportRows = 20000
+
+// ErrTooManyRows means an export would exceed MaxExportRows.
+var ErrTooManyRows = errors.New("records: too many rows to export")
+
+// ExportStudents writes the filtered students as CSV. All rows are read BEFORE the first byte is
+// written, so a failure never leaves a truncated file behind. Cells that a spreadsheet could run as a
+// formula are neutralised. The export is audited with the row count only (no personal data).
+func (s *Service) ExportStudents(ctx context.Context, t tenancy.Tenant, f StudentFilter, begin func(filename string) io.Writer, reqID string) error {
+	f.Q = strings.TrimSpace(f.Q)
+	f.Limit, f.Offset = 100, 0
+	var all []Student
+	for {
+		batch, err := s.Store.ListStudents(ctx, t.Scope(), f)
+		if err != nil {
+			return err
+		}
+		// Store returns up to Limit+1 rows to signal more (see trim in the HTTP layer).
+		more := len(batch) > f.Limit
+		if more {
+			batch = batch[:f.Limit]
+		}
+		all = append(all, batch...)
+		if len(all) > MaxExportRows {
+			return ErrTooManyRows
+		}
+		if !more {
+			break
+		}
+		f.Offset += f.Limit
+	}
+	if s.Audit != nil {
+		if err := s.Audit.Record(ctx, audit.Event{ActorType: audit.ActorUser, ActorUserID: t.UserID, Action: "student.exported",
+			EntityType: "institute", EntityID: t.Institute.ID, InstituteID: t.Institute.ID, RequestID: reqID,
+			Metadata: map[string]any{"rows": len(all)}}); err != nil {
+			return err
+		}
+	}
+	cw := csv.NewWriter(begin("students-" + time.Now().UTC().Format("2006-01-02") + ".csv"))
+	_ = cw.Write([]string{"student_number", "full_name", "email", "phone", "archived", "created_at"})
+	for _, st := range all {
+		archived := "no"
+		if st.ArchivedAt != nil {
+			archived = "yes"
+		}
+		_ = cw.Write([]string{csvSafe(st.StudentNumber), csvSafe(st.FullName), csvSafe(st.Email), csvSafe(st.Phone),
+			archived, st.CreatedAt.UTC().Format("2006-01-02")})
+	}
+	cw.Flush()
+	return cw.Error()
+}
+
+// csvSafe stops spreadsheet programs from running a cell as a formula.
+func csvSafe(v string) string {
+	if v != "" && strings.ContainsAny(v[:1], "=+-@\t\r") {
+		return "'" + v
+	}
+	return v
 }

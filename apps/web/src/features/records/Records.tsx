@@ -302,7 +302,7 @@ function StudentDetail({ id, canWrite, onClose, onChanged }: { id: string; canWr
   );
 }
 
-export function StudentsPage({ canWrite }: { canWrite: boolean }) {
+export function StudentsPage({ canWrite, canExport = false }: { canWrite: boolean; canExport?: boolean }) {
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
   const [courseId, setCourseId] = useState('');
@@ -332,6 +332,22 @@ export function StudentsPage({ canWrite }: { canWrite: boolean }) {
         </select>{' '}
         <ArchiveFilter value={archived} onChange={reset(setArchived)} />
       </form>
+      {canExport && (
+        <p>
+          <button type="button" disabled={m.busy} onClick={() => m.run(async () => {
+            const blob = await studentsApi.exportCsv({ q: term, course_id: courseId, status, archived });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'students.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          })}>Export students (CSV)</button>{' '}
+          <small>Uses the search and filters above.</small>
+        </p>
+      )}
       <FormError error={m.error} />
       {open && <StudentDetail id={open} canWrite={canWrite} onClose={() => setOpen(null)} onChanged={list.retry} />}
       {list.state.status === 'loading' && <Loading />}

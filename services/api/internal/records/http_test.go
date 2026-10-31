@@ -28,8 +28,9 @@ func newEnv(t *testing.T) *env {
 	w := audittest.NewMemWriter()
 	e := &env{w: w}
 	e.f = tenancytest.NewFixture(t, func(f *tenancytest.Fixture) {
-		h := &records.Handler{Svc: records.NewService(recordstest.NewMemStore(w)), Tenancy: f.TenantH,
-			Log: slogDiscard()}
+		svc := records.NewService(recordstest.NewMemStore(w))
+		svc.Audit = w
+		h := &records.Handler{Svc: svc, Tenancy: f.TenantH, Log: slogDiscard()}
 		h.Register(f.Mux)
 	})
 	return e
