@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -310,4 +311,33 @@ func NeutralizeFormula(c string) string {
 		return "'" + c
 	}
 	return c
+}
+
+// AbandonedAfter is how long an unfinished upload may sit before its rows (personal data) are removed.
+const AbandonedAfter = 7 * 24 * time.Hour
+
+// PurgeAbandoned removes the rows of unfinished imports idle for AbandonedAfter. It is safe to run on
+// every replica at once: each import is emptied by one UPDATE that only matches still-unfinished rows.
+func (s *Service) PurgeAbandoned(ctx context.Context) (int, error) {
+	p, err := s.Store.PurgeAbandoned(ctx, s.Now().Add(-AbandonedAfter))
+	return len(p), err
+}
+
+// RunPurge purges once at start and then every interval until ctx ends. Failures are logged by the caller's
+// logger and retried at the next tick.
+func (s *Service) RunPurge(ctx context.Context, every time.Duration, log *slog.Logger) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		if n, err := s.PurgeAbandoned(ctx); err != nil && ctx.Err() == nil {
+			log.Error("import purge failed", "err", err)
+		} else if n > 0 {
+			log.Info("abandoned imports purged", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }

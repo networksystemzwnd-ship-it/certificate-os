@@ -176,7 +176,10 @@ func run(args []string) error {
 	recordsSvc := records.NewService(recordspg.New(pool))
 	recordsSvc.Audit = auditStore
 	(&records.Handler{Svc: recordsSvc, Log: log, Tenancy: tenantH}).Register(mux)
-	(&imports.Handler{Svc: imports.NewService(importspg.New(pool), recordsSvc), Log: log, Tenancy: tenantH}).Register(mux)
+	importsSvc := imports.NewService(importspg.New(pool), recordsSvc)
+	(&imports.Handler{Svc: importsSvc, Log: log, Tenancy: tenantH}).Register(mux)
+	// Abandoned uploads hold personal data: their rows are removed after imports.AbandonedAfter (D-178).
+	go importsSvc.RunPurge(ctx, time.Hour, log)
 	(&templates.Handler{Svc: templates.NewService(templatespg.New(pool)), Log: log, Tenancy: tenantH}).Register(mux)
 	var renderer pdf.Renderer = pdf.Unavailable{}
 	if cfg.PDFChromePath != "" {

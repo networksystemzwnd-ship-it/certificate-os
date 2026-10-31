@@ -172,6 +172,15 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
 - Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
 
+### Abandoned import purge — Built (needs your verification)
+- Priority: P1 (privacy)
+- Delivered: migration 0015, `imports.Store.PurgeAbandoned`, hourly job (D-178).
+- Acceptance:
+  - [x] store contract (memory): purges unfinished imports idle 7+ days in every institute, leaves recent, fresh and finished ones, one audit event each, second run finds nothing
+  - [x] SQL verified on real PostgreSQL 16 as the restricted role: invisible without the purge setting; with it only idle unfinished rows are visible; every other UPDATE (other status, non-empty rows, finished or fresh rows) and DELETE is refused
+  - [ ] the Postgres contract through real pgx (`TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL`)
+- Not included: purge of finished imports' error-report rows, purge of other old data (see `docs/privacy-retention.md`).
+
 ### Student CSV export — Built (needs your verification)
 - Priority: P1
 - Delivered: `GET /api/v1/students/export` (D-177), button in the Students tab; OpenAPI 0.15.0.

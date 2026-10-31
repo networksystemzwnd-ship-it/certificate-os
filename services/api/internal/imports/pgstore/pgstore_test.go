@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/certificate-os/api/internal/audit"
 	auditpg "github.com/certificate-os/api/internal/audit/pgstore"
@@ -66,6 +67,28 @@ func TestPgStoreContract(t *testing.T) {
 					t.Fatal(err)
 				}
 				return tenancy.TrustedScope(inst.ID), u.ID
+			},
+			Age: func(instituteID, importID string, by time.Duration) {
+				// The updated_at trigger would overwrite a backdated value, so it is switched off for this
+				// statement; the table is forced-RLS, so the owner connection also names the institute.
+				tx, err := owner.Begin(ctx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = tx.Rollback(ctx) }()
+				for _, q := range []string{
+					`SELECT set_config('app.institute_id', '` + instituteID + `', true)`,
+					`ALTER TABLE student_imports DISABLE TRIGGER student_imports_set_updated_at`,
+					`UPDATE student_imports SET updated_at = now() - interval '` + itoa(int(by/time.Second)) + ` seconds' WHERE id = '` + importID + `'`,
+					`ALTER TABLE student_imports ENABLE TRIGGER student_imports_set_updated_at`,
+				} {
+					if _, err := tx.Exec(ctx, q); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := tx.Commit(ctx); err != nil {
+					t.Fatal(err)
+				}
 			},
 			AuditTotal: func(instituteID string) int {
 				recs, err := reader.List(ctx, audit.Filter{Limit: 200})

@@ -2,6 +2,7 @@ package imports
 
 import (
 	"context"
+	"time"
 
 	"github.com/certificate-os/api/internal/audit"
 	"github.com/certificate-os/api/internal/tenancy"
@@ -17,4 +18,12 @@ type Store interface {
 	// of a job only if its stored status is still `from`; otherwise ErrState. ev, when non-nil, is written
 	// in the same transaction. The returned Import carries the stored values.
 	Save(ctx context.Context, s tenancy.Scope, imp Import, from Status, ev *audit.Event) (Import, error)
+
+	// PurgeAbandoned empties the uploaded rows of imports that are still `uploaded` or `validated` and have not
+	// changed since olderThan, across all institutes, and marks them cancelled. It writes one system audit event
+	// per import (ids only) in the same transaction and returns what it purged. Finished imports are untouched.
+	PurgeAbandoned(ctx context.Context, olderThan time.Time) ([]Purged, error)
 }
+
+// Purged names an import whose rows were removed.
+type Purged struct{ ImportID, InstituteID string }

@@ -43,3 +43,6 @@ Alert when the last successful `restore-check` or dump is older than 26 h (this 
 ## Provider outages
 Email: deliveries retry automatically (30 s, 2 min, 10 min, 1 h; 5 attempts) and never affect certificates. After an outage, failed ones can be retried
 from the UI. Issuing and verification do not depend on the mail provider.
+
+## Abandoned import uploads
+An hourly job in the API process removes the rows of student-import uploads left unfinished for 7 days (D-178). It logs `abandoned imports purged count=N`; a repeating `import purge failed` error means the database role lacks migration 0015 (run `api migrate up`).

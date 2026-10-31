@@ -29,6 +29,7 @@ Evidence legend: **T** = automated test, **S** = checked by hand on real Postgre
 | PostgreSQL row-level security, `FORCE`, restricted runtime role without DELETE or table ownership (ADR-001) | T (table-classification test), S |
 | Narrow extra policies: public lookup (D-162) and worker scan on a PII-free queue (D-171) | S |
 | Suspended institute is read-only; exports blocked (D-114) | T |
+| Cross-institute purge of abandoned imports uses two narrow policies, only while `app.worker = 'purge'` (D-178) | S |
 | Foreign-tenant access returns nothing (dashboards, records, certificates, deliveries) | T, S |
 
 ## 4. Certificates and public exposure

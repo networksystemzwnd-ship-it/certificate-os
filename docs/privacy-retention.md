@@ -26,7 +26,8 @@
 | Data | Proposal |
 |---|---|
 | Issued certificates, PDFs, snapshots | Kept while the institute is active and for a period after closure agreed with the institute *(decide: e.g. X years)*, because verifiers rely on them |
-| Student records and import files (`student_imports`) | Kept while the institute is active; archive on request |
+| Student records | Kept while the institute is active; archive on request |
+| Uploaded import rows (`student_imports`) | Unfinished uploads: rows removed automatically after 7 days (D-178). Finished imports keep rows needing attention for the error report *(decide: purge after N days)* |
 | Delivery attempts | Candidate for purge after N months *(decide)* |
 | Verification events | Candidate for purge after N months *(decide)* |
 | Audit log | Kept for the audit period *(decide)*; append-only, so purge needs a deliberate admin procedure not built yet |

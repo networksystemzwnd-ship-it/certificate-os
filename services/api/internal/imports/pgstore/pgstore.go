@@ -144,3 +144,51 @@ func (s *Store) Save(ctx context.Context, sc tenancy.Scope, imp imports.Import, 
 	})
 	return out, err
 }
+
+// PurgeAbandoned runs with app.worker = 'purge'. Migration 0015's policies let that mode see and update ONLY
+// unfinished imports idle for more than a day, and only to an emptied, cancelled state. No RETURNING: the new
+// row is intentionally invisible to the purge policy, so the affected ids are read first, in the same transaction.
+func (s *Store) PurgeAbandoned(ctx context.Context, olderThan time.Time) ([]imports.Purged, error) {
+	var out []imports.Purged
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.worker', 'purge', true)`); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `SELECT id::text, institute_id::text FROM student_imports
+		WHERE status IN ('uploaded', 'validated') AND updated_at < $1 AND rows <> '[]'::jsonb
+		ORDER BY updated_at LIMIT 500 FOR UPDATE`, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var p imports.Purged
+		if err := rows.Scan(&p.ImportID, &p.InstituteID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, p := range out {
+		tag, err := tx.Exec(ctx, `UPDATE student_imports SET status = 'cancelled', rows = '[]'::jsonb
+			WHERE id = $1::uuid AND institute_id = $2::uuid AND status IN ('uploaded', 'validated')`, p.ImportID, p.InstituteID)
+		if err != nil {
+			return nil, err
+		}
+		if tag.RowsAffected() != 1 {
+			return nil, errors.New("imports: purge lost a row it had just locked")
+		}
+		if err := auditpg.InsertTx(ctx, tx, audit.Event{ActorType: audit.ActorSystem, Action: "student_import.purged",
+			EntityType: "student_import", EntityID: p.ImportID, InstituteID: p.InstituteID}); err != nil {
+			return nil, err
+		}
+	}
+	return out, tx.Commit(ctx)
+}
