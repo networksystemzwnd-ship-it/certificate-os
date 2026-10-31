@@ -541,3 +541,21 @@ func (m *MemStore) UpdateEnrollment(ctx context.Context, s tenancy.Scope, studen
 	e.Status, e.CompletionDate, e.Grade, e.UpdatedAt = status, date, grade, m.Now()
 	return m.enrollmentView(d, e), nil
 }
+
+func (m *MemStore) EnrollmentsOf(_ context.Context, s tenancy.Scope, studentIDs []string) ([]records.Enrollment, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	d := m.tenant(s)
+	want := map[string]bool{}
+	for _, id := range studentIDs {
+		want[id] = true
+	}
+	out := []records.Enrollment{}
+	for _, e := range d.enrollments {
+		if want[e.StudentID] {
+			out = append(out, m.enrollmentView(d, e))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}

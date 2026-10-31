@@ -105,6 +105,42 @@ func RunStoreContract(t *testing.T, newHarness func(t *testing.T) Harness) {
 		}
 	})
 
+	t.Run("enrollmentsOf returns enrollments of the given students only, with names, and never crosses institutes", func(t *testing.T) {
+		h := newHarness(t)
+		a, b := h.NewScope(), h.NewScope()
+		c := course(t, h, a, "Welding")
+		b1, b2 := batch(t, h, a, c.ID, "Jan"), batch(t, h, a, c.ID, "Feb")
+		s1, s2, s3 := student(t, h, a, "Asha Rao", "S1"), student(t, h, a, "Ravi", "S2"), student(t, h, a, "Nobody", "S3")
+		for _, bid := range []string{b1.ID, b2.ID} {
+			_, err := h.Store.AddEnrollment(ctx, a, s1.ID, bid, ev("enrollment.created", "enrollment"))
+			must(t, err)
+		}
+		_, err := h.Store.AddEnrollment(ctx, a, s2.ID, b1.ID, ev("enrollment.created", "enrollment"))
+		must(t, err)
+		other := student(t, h, b, "Other Tenant", "S1")
+
+		got, err := h.Store.EnrollmentsOf(ctx, a, []string{s1.ID, s3.ID, other.ID, "not-a-uuid"})
+		must(t, err)
+		if len(got) != 2 {
+			t.Fatalf("want only Asha's two enrollments, got %+v", got)
+		}
+		for _, e := range got {
+			if e.StudentID != s1.ID || e.CourseName != "Welding" || (e.BatchName != "Jan" && e.BatchName != "Feb") {
+				t.Fatalf("unexpected enrollment %+v", e)
+			}
+		}
+		none, err := h.Store.EnrollmentsOf(ctx, b, []string{s1.ID, s2.ID})
+		must(t, err)
+		if len(none) != 0 {
+			t.Fatalf("institute B must not see A's enrollments: %+v", none)
+		}
+		empty, err := h.Store.EnrollmentsOf(ctx, a, nil)
+		must(t, err)
+		if len(empty) != 0 {
+			t.Fatalf("no ids, no rows: %+v", empty)
+		}
+	})
+
 	t.Run("courses: create, read, uniqueness, archive and restore", func(t *testing.T) {
 		h := newHarness(t)
 		a := h.NewScope()

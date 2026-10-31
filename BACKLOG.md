@@ -198,7 +198,8 @@ Template: see `PROJECT_BRAIN.md` §12.5.
 - Acceptance:
   - [x] staff denied, admin allowed, suspended blocked, other institute's students never included, more than one page of rows, formula cells neutralised, audit without personal data (tests, mutation-checked)
   - [ ] `students/export` through real Postgres (it reuses the existing list query) and the frontend test (never run in the build sandbox)
-- Not included: enrollments in the file, XLSX.
+- Enrollments in the file: done (one row per enrollment; `records.Store.EnrollmentsOf`, contract-tested, SQL checked on real PG16 as the restricted role).
+- Not included: XLSX output.
 
 ### M6b — Operations readiness — Built (needs your verification)
 - Priority: P0

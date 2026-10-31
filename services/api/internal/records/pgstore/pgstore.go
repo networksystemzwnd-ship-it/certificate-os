@@ -699,3 +699,35 @@ func (s *Store) UpdateEnrollment(ctx context.Context, sc tenancy.Scope, studentI
 	})
 	return out, err
 }
+
+func (s *Store) EnrollmentsOf(ctx context.Context, sc tenancy.Scope, studentIDs []string) ([]records.Enrollment, error) {
+	if len(studentIDs) > records.MaxLookupValues {
+		return nil, errors.New("too many student ids")
+	}
+	ids := make([]string, 0, len(studentIDs))
+	for _, id := range studentIDs {
+		if okID(id) {
+			ids = append(ids, id)
+		}
+	}
+	out := []records.Enrollment{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	err := s.tx(ctx, sc, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, enrollmentSel+` WHERE e.institute_id = $1::uuid AND e.student_id = ANY($2::uuid[]) ORDER BY e.created_at, e.id`, sc.InstituteID(), ids)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			e, err := scanEnrollment(rows)
+			if err != nil {
+				return err
+			}
+			out = append(out, e)
+		}
+		return rows.Err()
+	})
+	return out, err
+}

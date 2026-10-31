@@ -43,6 +43,10 @@ type Store interface {
 	// duplicate detection; at most MaxLookupValues values per call.
 	LookupStudents(ctx context.Context, s tenancy.Scope, numbers, emails []string) ([]Student, error)
 
+	// EnrollmentsOf returns the enrollments (with batch and course names) of the given students, oldest first.
+	// Ids that belong to another institute simply match nothing. At most MaxLookupValues ids per call.
+	EnrollmentsOf(ctx context.Context, s tenancy.Scope, studentIDs []string) ([]Enrollment, error)
+
 	// AddEnrollment: student and batch must exist in this institute and be active; one enrollment
 	// per (student, batch) (*ConflictError{Field: "batch_id"}).
 	AddEnrollment(ctx context.Context, s tenancy.Scope, studentID, batchID string, ev audit.Event) (Enrollment, error)

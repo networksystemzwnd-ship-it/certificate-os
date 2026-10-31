@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Student export now includes enrollments: one row per enrollment with course, batch, status, completion date and grade (students without enrollments keep one row). No migration, no new dependencies.
 - XLSX student import: upload an .xlsx workbook (first sheet) as well as CSV; spreadsheet dates become ISO dates; standard-library reader with size caps against zip bombs, formulas never evaluated. The upload label is now "CSV or Excel file". No new dependencies.
 - Purge of abandoned student-import uploads: an hourly job removes the CSV rows of imports left unfinished for 7 days and marks them cancelled (audited, ids only). Migration 0015 adds two narrow row-level-security policies for the purge worker. No new dependencies.
 - Student CSV export: "Export students (CSV)" in the Students tab (follows the filters; permission `students.export`, blocked while suspended, formula-safe, capped at 20,000 rows, audited with the row count). No migration, no new dependencies.

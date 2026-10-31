@@ -240,18 +240,23 @@ func (s *Service) UpdateEnrollment(ctx context.Context, t tenancy.Tenant, studen
 }
 
 // MaxExportRows bounds one student export; a larger institute must narrow the filter.
-const MaxExportRows = 20000
+const MaxExportRows = 20000 // students; enrollments are capped at three times that
 
 // ErrTooManyRows means an export would exceed MaxExportRows.
 var ErrTooManyRows = errors.New("records: too many rows to export")
 
-// ExportStudents writes the filtered students as CSV. All rows are read BEFORE the first byte is
+// ExportStudents writes the filtered students as CSV, one row per enrollment (a student without any gets one row). All rows are read BEFORE the first byte is
 // written, so a failure never leaves a truncated file behind. Cells that a spreadsheet could run as a
 // formula are neutralised. The export is audited with the row count only (no personal data).
 func (s *Service) ExportStudents(ctx context.Context, t tenancy.Tenant, f StudentFilter, begin func(filename string) io.Writer, reqID string) error {
 	f.Q = strings.TrimSpace(f.Q)
 	f.Limit, f.Offset = 100, 0
-	var all []Student
+	type line struct {
+		st Student
+		en []Enrollment
+	}
+	var all []line
+	enrolments := 0
 	for {
 		batch, err := s.Store.ListStudents(ctx, t.Scope(), f)
 		if err != nil {
@@ -262,8 +267,23 @@ func (s *Service) ExportStudents(ctx context.Context, t tenancy.Tenant, f Studen
 		if more {
 			batch = batch[:f.Limit]
 		}
-		all = append(all, batch...)
-		if len(all) > MaxExportRows {
+		ids := make([]string, len(batch))
+		for i, st := range batch {
+			ids[i] = st.ID
+		}
+		ens, err := s.Store.EnrollmentsOf(ctx, t.Scope(), ids)
+		if err != nil {
+			return err
+		}
+		byStudent := map[string][]Enrollment{}
+		for _, e := range ens {
+			byStudent[e.StudentID] = append(byStudent[e.StudentID], e)
+		}
+		for _, st := range batch {
+			all = append(all, line{st, byStudent[st.ID]})
+			enrolments += len(byStudent[st.ID])
+		}
+		if len(all) > MaxExportRows || enrolments > 3*MaxExportRows {
 			return ErrTooManyRows
 		}
 		if !more {
@@ -274,19 +294,27 @@ func (s *Service) ExportStudents(ctx context.Context, t tenancy.Tenant, f Studen
 	if s.Audit != nil {
 		if err := s.Audit.Record(ctx, audit.Event{ActorType: audit.ActorUser, ActorUserID: t.UserID, Action: "student.exported",
 			EntityType: "institute", EntityID: t.Institute.ID, InstituteID: t.Institute.ID, RequestID: reqID,
-			Metadata: map[string]any{"rows": len(all)}}); err != nil {
+			Metadata: map[string]any{"students": len(all), "enrollments": enrolments}}); err != nil {
 			return err
 		}
 	}
 	cw := csv.NewWriter(begin("students-" + time.Now().UTC().Format("2006-01-02") + ".csv"))
-	_ = cw.Write([]string{"student_number", "full_name", "email", "phone", "archived", "created_at"})
-	for _, st := range all {
+	_ = cw.Write([]string{"student_number", "full_name", "email", "phone", "archived", "created_at",
+		"course", "batch", "enrollment_status", "completion_date", "grade"})
+	for _, l := range all {
 		archived := "no"
-		if st.ArchivedAt != nil {
+		if l.st.ArchivedAt != nil {
 			archived = "yes"
 		}
-		_ = cw.Write([]string{csvSafe(st.StudentNumber), csvSafe(st.FullName), csvSafe(st.Email), csvSafe(st.Phone),
-			archived, st.CreatedAt.UTC().Format("2006-01-02")})
+		head := []string{csvSafe(l.st.StudentNumber), csvSafe(l.st.FullName), csvSafe(l.st.Email), csvSafe(l.st.Phone),
+			archived, l.st.CreatedAt.UTC().Format("2006-01-02")}
+		if len(l.en) == 0 { // a student without enrollments still gets one row
+			_ = cw.Write(append(head, "", "", "", "", ""))
+			continue
+		}
+		for _, e := range l.en {
+			_ = cw.Write(append(append([]string{}, head...), csvSafe(e.CourseName), csvSafe(e.BatchName), string(e.Status), e.CompletionDate, csvSafe(e.Grade)))
+		}
 	}
 	cw.Flush()
 	return cw.Error()
