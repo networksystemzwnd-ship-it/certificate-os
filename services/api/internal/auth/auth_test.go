@@ -203,7 +203,7 @@ func TestLimiter(t *testing.T) {
 
 func TestPlatformOpsHaveNoStudentOrCertificateAccess(t *testing.T) {
 	denied := []auth.Permission{auth.PermStudentsRead, auth.PermStudentsWrite, auth.PermStudentsExport,
-		auth.PermCertsRead, auth.PermCertsIssue, auth.PermCertsRevoke, auth.PermStaffManage}
+		auth.PermCertsRead, auth.PermCertsIssue, auth.PermCertsRevoke, auth.PermCertsExport, auth.PermStaffManage}
 	for _, role := range []auth.PlatformRole{auth.PlatformOps, auth.PlatformSuperAdmin} {
 		for _, p := range denied {
 			if auth.HasPlatformPermission(role, p) {
@@ -241,7 +241,7 @@ func TestInstituteRoleBoundaries(t *testing.T) {
 	if !auth.HasInstitutePermission(auth.InstituteAdmin, auth.PermCertsIssue) {
 		t.Error("admin must issue certificates")
 	}
-	for _, p := range []auth.Permission{auth.PermCertsIssue, auth.PermCertsRevoke, auth.PermCertsDeliver, auth.PermStaffManage, auth.PermStudentsExport} {
+	for _, p := range []auth.Permission{auth.PermCertsIssue, auth.PermCertsRevoke, auth.PermCertsDeliver, auth.PermCertsExport, auth.PermStaffManage, auth.PermStudentsExport} {
 		if auth.HasInstitutePermission(auth.InstituteStaff, p) {
 			t.Errorf("certificate staff must not hold %q by default", p)
 		}

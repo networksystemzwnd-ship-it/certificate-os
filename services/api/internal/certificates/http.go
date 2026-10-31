@@ -17,6 +17,7 @@ import (
 // id is never read from the path, query or body.
 type Handler struct {
 	Svc     *Service
+	Jobs    *Jobs // bulk issuing (optional: the routes are only registered when set)
 	Log     *slog.Logger
 	Tenancy *tenancy.Handler
 }
@@ -28,6 +29,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/certificates/{id}", g(auth.PermCertsRead, http.HandlerFunc(h.get)))
 	mux.Handle("GET /api/v1/certificates/{id}/pdf", g(auth.PermCertsRead, http.HandlerFunc(h.download)))
 	mux.Handle("POST /api/v1/certificates/{id}/revoke", g(auth.PermCertsRevoke, http.HandlerFunc(h.revoke)))
+	if h.Jobs != nil {
+		h.registerBulk(mux)
+	}
 }
 
 type certDTO struct {
@@ -74,6 +78,10 @@ func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
 		httpx.WriteError(w, r, http.StatusUnprocessableEntity, httpx.CodeValidation, ee.Reason, map[string]string{ee.Field: ee.Reason})
 	case errors.Is(err, ErrNotFound):
 		httpx.NotFound(w, r)
+	case errors.Is(err, ErrJobActive):
+		httpx.WriteError(w, r, http.StatusConflict, httpx.CodeConflict, "Another bulk job is still running. Wait for it to finish or cancel it first.", nil)
+	case errors.Is(err, ErrNothingToIssue):
+		httpx.WriteError(w, r, http.StatusUnprocessableEntity, httpx.CodeValidation, "No certificates to issue: every enrollment of this batch is either not completed, archived, or already has a certificate.", map[string]string{"batch_id": "Nothing to issue in this batch."})
 	case errors.Is(err, ErrAlreadyIssued):
 		httpx.WriteError(w, r, http.StatusConflict, httpx.CodeConflict, "This enrollment already has a certificate. Revoke it first to issue a new one.", nil)
 	case errors.Is(err, ErrState):

@@ -180,7 +180,13 @@ func run(args []string) error {
 	} else {
 		log.Warn("certificate pdf rendering is disabled (PDF_CHROME_PATH not set): issuing returns 503 until it is configured")
 	}
-	(&certificates.Handler{Svc: certificates.NewService(certspg.New(pool), renderer, cfg.PublicBaseURL), Log: log, Tenancy: tenantH}).Register(mux)
+	certsStore := certspg.New(pool)
+	certsSvc := certificates.NewService(certsStore, renderer, cfg.PublicBaseURL)
+	// Bulk jobs run in this process. ctx ends on SIGINT/SIGTERM: runners stop between items and the job is
+	// resumed later (POST /api/v1/bulk-jobs/{id}/resume) once its lease has run out.
+	bulkJobs := certificates.NewJobs(ctx, certsSvc, certsStore, func(msg string, args ...any) { log.Error(msg, args...) })
+	bulkJobs.Audit = auditStore
+	(&certificates.Handler{Svc: certsSvc, Jobs: bulkJobs, Log: log, Tenancy: tenantH}).Register(mux)
 	staffStore := staffpg.New(pool)
 	staff.NewHandler(staff.NewService(staffStore, staffStore), log, tenantH).Register(mux)
 	(&tenancy.OpsHandler{Svc: &tenancy.OpsService{Store: tenantStore}, Log: log, Authn: authH.Authenticate}).Register(mux)
@@ -211,7 +217,9 @@ func run(args []string) error {
 		log.Info("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		return srv.Shutdown(shutdownCtx)
+		err := srv.Shutdown(shutdownCtx)
+		bulkJobs.Wait(shutdownCtx) // let a running render finish; unfinished jobs stay resumable
+		return err
 	}
 	return nil
 }

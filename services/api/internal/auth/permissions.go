@@ -33,6 +33,7 @@ const (
 	PermCertsIssue      Permission = "certificates.issue"
 	PermCertsRevoke     Permission = "certificates.revoke"
 	PermCertsDeliver    Permission = "certificates.deliver"
+	PermCertsExport     Permission = "certificates.export" // ZIP of PDFs (blocked while suspended, D-114)
 )
 
 // PlatformRole is a platform-wide role stored on the user. Empty means a normal user.
@@ -84,7 +85,7 @@ func merge(sets ...permSet) permSet {
 var instituteOperational = set(
 	PermInstituteRead, PermCoursesRead, PermCoursesWrite, PermStudentsRead, PermStudentsWrite,
 	PermStudentsImport, PermStudentsExport, PermTemplatesRead, PermTemplatesWrite,
-	PermCertsRead, PermCertsIssue, PermCertsRevoke, PermCertsDeliver,
+	PermCertsRead, PermCertsIssue, PermCertsRevoke, PermCertsDeliver, PermCertsExport,
 )
 
 // Platform ops deliberately have NO student or certificate permissions (brain §3.3).

@@ -26,4 +26,5 @@ export const GRANTABLE: { key: string; label: string }[] = [
   { key: 'certificates.issue', label: 'Issue certificates' },
   { key: 'certificates.revoke', label: 'Revoke certificates' },
   { key: 'certificates.deliver', label: 'Send certificates' },
+  { key: 'certificates.export', label: 'Download certificate ZIPs' },
 ];

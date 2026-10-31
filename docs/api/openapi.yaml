@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.9.0
+  version: 0.10.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -631,6 +631,134 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { description: Not issued, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates/bulk-preview:
+    get:
+      summary: Count what a bulk job for a batch would do, before anything is created (requires certificates.issue)
+      description: >
+        `eligible` enrollments would be issued; `already_issued` hold a live certificate; `not_eligible` are not
+        completed or the student is archived. 404 for an unknown batch or template (also another institute's),
+        422 for an archived template.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: batch_id, in: query, required: true, schema: { type: string } }
+        - { name: template_id, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: "OK: {preview: {batch_name, eligible, already_issued, not_eligible, max_per_job}}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates/bulk:
+    post:
+      summary: Issue the template to every eligible enrollment of a batch as a background job (requires certificates.issue)
+      description: >
+        The eligible enrollments are fixed when the job is created (at most 500 per job); the template version is
+        pinned (0 or omitted = current). Each item goes through the normal issuing path, so every certificate is
+        numbered, rendered and stored exactly like a single one and an enrollment can never receive two live
+        certificates. Only one job per institute is queued/processing at a time (409). 202: poll
+        `GET /api/v1/bulk-jobs/{id}`. 422 when nothing is eligible; 503 `render_unavailable` writes nothing.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [batch_id, template_id], properties: { batch_id: { type: string }, template_id: { type: string }, template_version: { type: integer, minimum: 0, maximum: 100 } } }
+      responses:
+        '202': { description: "Accepted: {job}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs:
+    get:
+      summary: List bulk jobs, newest first (requires certificates.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+      responses:
+        '200': { description: "OK: {jobs: [...], has_more, limit, offset}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs/{jid}:
+    get:
+      summary: One bulk job with live counts (requires certificates.read)
+      description: >
+        `status`: queued, processing, completed, completed_with_errors, failed (every item failed) or cancelled.
+        `total = succeeded + failed + remaining`.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: jid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {job}" }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs/{jid}/items:
+    get:
+      summary: Per-student results of a job, in issuing order (requires certificates.read)
+      description: Failed items carry a short reason without internal details.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: jid, in: path, required: true, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [queued, processing, succeeded, failed] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+      responses:
+        '200': { description: "OK: {items: [...], has_more, limit, offset}" }
+        '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs/{jid}/retry-failed:
+    post:
+      summary: Put the failed items of a finished job back in the queue and run it again (requires certificates.issue)
+      description: Only for completed_with_errors or failed jobs and only when no other job is active (409).
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: jid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {job}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs/{jid}/resume:
+    post:
+      summary: Continue a job whose runner stopped, for example after a restart (requires certificates.issue)
+      description: Allowed for a queued job, or a processing job that made no progress for 2 minutes (409 otherwise).
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: jid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {job}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs/{jid}/cancel:
+    post:
+      summary: Stop an active job (requires certificates.issue)
+      description: Certificates already issued are kept; items not yet processed stay queued and are not issued.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: jid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {job}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /api/v1/bulk-jobs/{jid}/export:
+    get:
+      summary: ZIP of the job's issued PDFs plus manifest.csv (requires certificates.export)
+      description: >
+        Only for a finished job. Revoked certificates are left out; 409 when nothing is left. `certificates.export`
+        is not a read permission, so a suspended institute cannot export (D-114). The export is audited
+        (`certificate.bulk_exported`, file count only). Names in the manifest that start with = + - or @ are
+        prefixed with an apostrophe so spreadsheets do not run them as formulas.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: jid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: The archive, content: { application/zip: { schema: { type: string, format: binary } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
   /api/v1/institute-applications:
     post:
       summary: Start an application (draft). Any subset of fields; provided fields are validated. One open application per user.

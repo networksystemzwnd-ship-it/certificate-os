@@ -57,9 +57,9 @@ func TestPgStoreContract(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	certtest.RunStoreContract(t, func(t *testing.T) certtest.Harness {
+	build := func(t *testing.T) certtest.Harness {
 		// TRUNCATE does not fire the immutability triggers (they guard UPDATE/DELETE only).
-		exec(`TRUNCATE certificate_files, certificates, certificate_counters, certificate_template_versions, certificate_templates,
+		exec(`TRUNCATE bulk_job_items, bulk_jobs, certificate_files, certificates, certificate_counters, certificate_template_versions, certificate_templates,
 			enrollments, students, batches, courses, institute_memberships, institute_applications, institutes, users, audit_logs CASCADE`)
 		return certtest.Harness{
 			Store: pgstore.New(rt),
@@ -91,11 +91,14 @@ func TestPgStoreContract(t *testing.T) {
 				}
 				inst := s.InstituteID()
 				var course, batch, student, enrollment, tpl string
-				if err := owner.QueryRow(ctx, `INSERT INTO courses (institute_id, name) VALUES ($1::uuid, 'Web Design ' || $2) RETURNING id::text`, inst, k).Scan(&course); err != nil {
-					t.Fatal(err)
-				}
-				if err := owner.QueryRow(ctx, `INSERT INTO batches (institute_id, course_id, name) VALUES ($1::uuid, $2::uuid, 'Batch A') RETURNING id::text`, inst, course).Scan(&batch); err != nil {
-					t.Fatal(err)
+				batch, tpl = o.BatchID, o.TemplateID
+				if batch == "" {
+					if err := owner.QueryRow(ctx, `INSERT INTO courses (institute_id, name) VALUES ($1::uuid, 'Web Design ' || $2) RETURNING id::text`, inst, k).Scan(&course); err != nil {
+						t.Fatal(err)
+					}
+					if err := owner.QueryRow(ctx, `INSERT INTO batches (institute_id, course_id, name) VALUES ($1::uuid, $2::uuid, 'Batch A') RETURNING id::text`, inst, course).Scan(&batch); err != nil {
+						t.Fatal(err)
+					}
 				}
 				if err := owner.QueryRow(ctx, `INSERT INTO students (institute_id, student_number, full_name, archived_at)
 					VALUES ($1::uuid, 'ST-' || $2, $3, CASE WHEN $4 THEN now() END) RETURNING id::text`, inst, k, o.StudentName, o.StudentArchived).Scan(&student); err != nil {
@@ -109,15 +112,17 @@ func TestPgStoreContract(t *testing.T) {
 					VALUES ($1::uuid, $2::uuid, $3::uuid, $4, nullif($5, '')::date, $6) RETURNING id::text`, inst, student, batch, status, completion, o.Grade).Scan(&enrollment); err != nil {
 					t.Fatal(err)
 				}
-				if err := owner.QueryRow(ctx, `INSERT INTO certificate_templates (institute_id, name, current_version, archived_at)
-					VALUES ($1::uuid, 'Diploma ' || $2, $3, CASE WHEN $4 THEN now() END) RETURNING id::text`, inst, k, o.Versions, o.TemplateArchived).Scan(&tpl); err != nil {
-					t.Fatal(err)
+				if tpl == "" {
+					if err := owner.QueryRow(ctx, `INSERT INTO certificate_templates (institute_id, name, current_version, archived_at)
+						VALUES ($1::uuid, 'Diploma ' || $2, $3, CASE WHEN $4 THEN now() END) RETURNING id::text`, inst, k, o.Versions, o.TemplateArchived).Scan(&tpl); err != nil {
+						t.Fatal(err)
+					}
+					for v := 1; v <= o.Versions; v++ {
+						cfg, _ := json.Marshal(certtest.TemplateConfig(v))
+						exec(`INSERT INTO certificate_template_versions (institute_id, template_id, number, config) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb)`, inst, tpl, v, string(cfg))
+					}
 				}
-				for v := 1; v <= o.Versions; v++ {
-					cfg, _ := json.Marshal(certtest.TemplateConfig(v))
-					exec(`INSERT INTO certificate_template_versions (institute_id, template_id, number, config) VALUES ($1::uuid, $2::uuid, $3, $4::jsonb)`, inst, tpl, v, string(cfg))
-				}
-				return certtest.Refs{StudentID: student, EnrollmentID: enrollment, TemplateID: tpl}
+				return certtest.Refs{StudentID: student, EnrollmentID: enrollment, TemplateID: tpl, BatchID: batch}
 			},
 			AuditActions: func(id string) []string {
 				recs, err := reader.List(ctx, audit.Filter{EntityType: "certificate", EntityID: id, Limit: 200})
@@ -151,5 +156,36 @@ func TestPgStoreContract(t *testing.T) {
 				return recs[0].Metadata
 			},
 		}
+	}
+	t.Run("certificates", func(t *testing.T) { certtest.RunStoreContract(t, build) })
+	t.Run("bulk jobs", func(t *testing.T) {
+		certtest.RunJobStoreContract(t, func(t *testing.T) certtest.JobHarness {
+			h := build(t)
+			return certtest.JobHarness{
+				Harness: h,
+				Jobs:    pgstore.New(rt),
+				SetActive: func(sc tenancy.Scope, active bool) {
+					st := "suspended"
+					if active {
+						st = "active"
+					}
+					exec(`UPDATE institutes SET status = $2 WHERE id = $1::uuid`, sc.InstituteID(), st)
+				},
+				JobAudit: func(id string) ([]string, map[string]any) {
+					recs, err := reader.List(ctx, audit.Filter{EntityType: "bulk_job", EntityID: id, Limit: 200})
+					if err != nil {
+						t.Fatal(err)
+					}
+					var acts []string
+					for i := len(recs) - 1; i >= 0; i-- {
+						acts = append(acts, recs[i].Action)
+					}
+					if len(recs) == 0 {
+						return acts, nil
+					}
+					return acts, recs[0].Metadata
+				},
+			}
+		})
 	})
 }

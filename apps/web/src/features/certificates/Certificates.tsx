@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, Loading } from '../../components/States';
 import { studentsApi, type Student } from '../records/api';
 import { templatesApi } from '../templates/api';
 import { certificatesApi, type Certificate } from './api';
+import { BulkPanel } from './Bulk';
 
 const STATUS_LABEL: Record<Certificate['status'], string> = {
   issued: 'Issued', revoked: 'Revoked', failed: 'Failed', pending: 'In progress',
@@ -164,7 +165,7 @@ function Row({ cert, canRevoke, onChanged }: { cert: Certificate; canRevoke: boo
   );
 }
 
-export function CertificatesPage({ canIssue, canRevoke }: { canIssue: boolean; canRevoke: boolean }) {
+export function CertificatesPage({ canIssue, canRevoke, canExport = false }: { canIssue: boolean; canRevoke: boolean; canExport?: boolean }) {
   const [status, setStatus] = useState('');
   const [q, setQ] = useState('');
   const [applied, setApplied] = useState('');
@@ -175,6 +176,7 @@ export function CertificatesPage({ canIssue, canRevoke }: { canIssue: boolean; c
     <section aria-labelledby="certs-h">
       <h3 id="certs-h">Certificates</h3>
       {canIssue && <IssuePanel onIssued={(c) => { setNotice(`Issued ${c.certificate_number} for ${c.student_name}.`); list.retry(); }} />}
+      {canIssue && <BulkPanel canExport={canExport} onChanged={list.retry} />}
       {notice && <p role="status">{notice}</p>}
       <form onSubmit={(e) => { e.preventDefault(); setApplied(q); }} aria-label="Filter certificates">
         <label htmlFor="cert-q">Search</label>{' '}

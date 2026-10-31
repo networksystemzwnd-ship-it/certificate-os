@@ -68,7 +68,7 @@ function Detail({ id }: { id: string }) {
       {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
       {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
       {tab === 'templates' && can('templates.read') && <TemplatesPage canWrite={can('templates.write')} />}
-      {tab === 'certificates' && can('certificates.read') && <CertificatesPage canIssue={can('certificates.issue')} canRevoke={can('certificates.revoke')} />}
+      {tab === 'certificates' && can('certificates.read') && <CertificatesPage canIssue={can('certificates.issue')} canRevoke={can('certificates.revoke')} canExport={can('certificates.export')} />}
       {tab === 'import' && can('students.import') && <ImportWizard />}
       {tab === 'staff' && can('staff.manage') && <StaffPage selfEmail={user?.email} />}
     </section>

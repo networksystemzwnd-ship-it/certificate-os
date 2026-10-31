@@ -25,11 +25,13 @@ type FixtureOpts struct {
 	TemplateArchived bool
 	StudentName      string // default "Asha Verma"
 	Grade            string
-	Versions         int // number of template versions (default 1)
+	Versions         int    // number of template versions (default 1)
+	BatchID          string // reuse a batch created by an earlier fixture of the same institute
+	TemplateID       string // reuse a template created by an earlier fixture of the same institute
 }
 
 // Refs identifies the records created by a fixture.
-type Refs struct{ StudentID, EnrollmentID, TemplateID string }
+type Refs struct{ StudentID, EnrollmentID, TemplateID, BatchID string }
 
 // TemplateConfig is the configuration the fixture stores for version n (distinct per version).
 func TemplateConfig(n int) templates.Config {
@@ -40,45 +42,60 @@ func TemplateConfig(n int) templates.Config {
 
 type src struct {
 	s       certificates.Source
-	configs []templates.Config
+	batchID string
+	tplID   string
+}
+
+type tpl struct {
+	name     string
+	archived bool
+	configs  []templates.Config
 }
 
 type tenantData struct {
-	sources map[string]*src // by enrollment id
-	certs   map[string]*row
-	files   map[string][]byte
-	counter map[int]int // year -> last number
+	templates map[string]*tpl
+	sources   map[string]*src // by enrollment id
+	certs     map[string]*row
+	files     map[string][]byte
+	counter   map[int]int // year -> last number
+	jobs      []*jobRec
 }
 
 type row struct{ c certificates.Certificate }
 
 type MemStore struct {
-	mu    sync.Mutex
-	n     int
-	data  map[string]*tenantData // keyed by institute id: the in-memory equivalent of RLS
-	Audit audit.Writer
+	mu       sync.Mutex
+	n        int
+	inactive map[string]bool        // institutes that are not active (suspended)
+	data     map[string]*tenantData // keyed by institute id: the in-memory equivalent of RLS
+	Audit    audit.Writer
 }
 
-var _ certificates.Store = (*MemStore)(nil)
+var (
+	_ certificates.Store    = (*MemStore)(nil)
+	_ certificates.JobStore = (*MemStore)(nil)
+)
 
 func NewMemStore(w audit.Writer) *MemStore {
-	return &MemStore{data: map[string]*tenantData{}, Audit: w}
+	return &MemStore{data: map[string]*tenantData{}, inactive: map[string]bool{}, Audit: w}
 }
 
 func (m *MemStore) tenant(s tenancy.Scope) *tenantData {
 	d := m.data[s.InstituteID()]
 	if d == nil {
-		d = &tenantData{sources: map[string]*src{}, certs: map[string]*row{}, files: map[string][]byte{}, counter: map[int]int{}}
+		d = &tenantData{templates: map[string]*tpl{}, sources: map[string]*src{}, certs: map[string]*row{}, files: map[string][]byte{}, counter: map[int]int{}}
 		m.data[s.InstituteID()] = d
 	}
 	return d
 }
 
 // AddFixture registers a student, a completed (or not) enrollment and a template in the institute.
+// BatchID / TemplateID in the options reuse records of an earlier fixture.
 func (m *MemStore) AddFixture(s tenancy.Scope, o FixtureOpts) Refs {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.n++
+	d := m.tenant(s)
 	if o.StudentName == "" {
 		o.StudentName = "Asha Verma"
 	}
@@ -89,17 +106,88 @@ func (m *MemStore) AddFixture(s tenancy.Scope, o FixtureOpts) Refs {
 	if o.Incomplete {
 		status, completion = "enrolled", ""
 	}
-	r := Refs{StudentID: fmt.Sprintf("stu-%d", m.n), EnrollmentID: fmt.Sprintf("enr-%d", m.n), TemplateID: fmt.Sprintf("tpl-%d", m.n)}
-	x := &src{s: certificates.Source{
+	r := Refs{StudentID: fmt.Sprintf("stu-%d", m.n), EnrollmentID: fmt.Sprintf("enr-%d", m.n), TemplateID: o.TemplateID, BatchID: o.BatchID}
+	if r.TemplateID == "" {
+		r.TemplateID = fmt.Sprintf("tpl-%d", m.n)
+		t := &tpl{name: "Diploma", archived: o.TemplateArchived}
+		for v := 1; v <= o.Versions; v++ {
+			t.configs = append(t.configs, TemplateConfig(v))
+		}
+		d.templates[r.TemplateID] = t
+	}
+	if r.BatchID == "" {
+		r.BatchID = fmt.Sprintf("bat-%d", m.n)
+	}
+	d.sources[r.EnrollmentID] = &src{batchID: r.BatchID, tplID: r.TemplateID, s: certificates.Source{
 		StudentID: r.StudentID, StudentName: o.StudentName, StudentNumber: fmt.Sprintf("ST-%d", m.n), StudentArchived: o.StudentArchived,
 		EnrollmentID: r.EnrollmentID, EnrollmentStatus: status, CompletionDate: completion, Grade: o.Grade,
-		BatchName: "Batch A", CourseName: "Web Design", InstituteName: "Test Institute",
-		TemplateID: r.TemplateID, TemplateName: "Diploma", TemplateArchived: o.TemplateArchived}}
-	for v := 1; v <= o.Versions; v++ {
-		x.configs = append(x.configs, TemplateConfig(v))
-	}
-	m.tenant(s).sources[r.EnrollmentID] = x
+		BatchName: "Batch A", CourseName: "Web Design", InstituteName: "Test Institute"}}
 	return r
+}
+
+// SetTemplateArchived flips the archived flag of a fixture template.
+func (m *MemStore) SetTemplateArchived(s tenancy.Scope, templateID string, archived bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if t := m.tenant(s).templates[templateID]; t != nil {
+		t.archived = archived
+	}
+}
+
+// EligibleInBatch lists the enrollments of a batch that could be issued now, plus counts of the ones left out.
+func (m *MemStore) EligibleInBatch(s tenancy.Scope, batchID string) (eligible []string, alreadyIssued, notEligible int, found bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.eligibleLocked(s, batchID)
+}
+
+func (m *MemStore) eligibleLocked(s tenancy.Scope, batchID string) (eligible []string, alreadyIssued, notEligible int, found bool) {
+	d := m.tenant(s)
+	type row struct{ id, name string }
+	var rows []row
+	for id, x := range d.sources {
+		if x.batchID != batchID {
+			continue
+		}
+		found = true
+		live := false
+		for _, r := range d.certs {
+			if r.c.EnrollmentID == id && (r.c.Status == certificates.Issued || r.c.Status == certificates.Pending) {
+				live = true
+			}
+		}
+		switch {
+		case live:
+			alreadyIssued++
+		case x.s.EnrollmentStatus != "completed" || x.s.StudentArchived:
+			notEligible++
+		default:
+			rows = append(rows, row{id, x.s.StudentName + "|" + id})
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].name < rows[j].name })
+	for _, r := range rows {
+		eligible = append(eligible, r.id)
+	}
+	return
+}
+
+// SetInstituteActive marks the institute active (default) or suspended for bulk runners.
+func (m *MemStore) SetInstituteActive(s tenancy.Scope, active bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.inactive[s.InstituteID()] = !active
+}
+
+// Template reports a fixture template for tests of other packages.
+func (m *MemStore) Template(s tenancy.Scope, id string) (name string, archived bool, versions int, ok bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t := m.tenant(s).templates[id]
+	if t == nil {
+		return "", false, 0, false
+	}
+	return t.name, t.archived, len(t.configs), true
 }
 
 func (m *MemStore) record(ctx context.Context, s tenancy.Scope, ev audit.Event, id, number string) error {
@@ -123,18 +211,20 @@ func (m *MemStore) BeginIssue(ctx context.Context, s tenancy.Scope, in certifica
 	defer m.mu.Unlock()
 	d := m.tenant(s)
 	x, ok := d.sources[in.EnrollmentID]
-	if !ok || x.s.TemplateID != in.TemplateID {
+	t := d.templates[in.TemplateID]
+	if !ok || t == nil {
 		return certificates.Certificate{}, certificates.ErrNotFound
 	}
 	version := in.Version
 	if version == 0 {
-		version = len(x.configs)
+		version = len(t.configs)
 	}
-	if version < 1 || version > len(x.configs) {
+	if version < 1 || version > len(t.configs) {
 		return certificates.Certificate{}, certificates.ErrNotFound
 	}
 	source := x.s
-	source.TemplateVersion, source.Config = version, x.configs[version-1]
+	source.TemplateID, source.TemplateName, source.TemplateArchived = in.TemplateID, t.name, t.archived
+	source.TemplateVersion, source.Config = version, t.configs[version-1]
 	if err := certificates.CheckEligible(source); err != nil {
 		return certificates.Certificate{}, err
 	}

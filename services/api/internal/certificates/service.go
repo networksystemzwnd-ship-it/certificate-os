@@ -47,6 +47,11 @@ func NewPublicID() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
+func (s *Service) renderOff() bool {
+	_, off := s.Renderer.(pdf.Unavailable)
+	return off
+}
+
 // VerifyURL is the link encoded in the certificate's QR code.
 func (s *Service) VerifyURL(publicID string) string { return s.PublicBaseURL + "/verify/" + publicID }
 
@@ -71,7 +76,7 @@ func (s *Service) Issue(ctx context.Context, t tenancy.Tenant, req IssueRequest,
 	if len(p) > 0 {
 		return Certificate{}, &ValidationError{Problems: p}
 	}
-	if _, off := s.Renderer.(pdf.Unavailable); off {
+	if s.renderOff() {
 		return Certificate{}, ErrRenderUnavailable // nothing written, no number used
 	}
 	publicID, err := NewPublicID()

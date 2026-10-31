@@ -49,3 +49,15 @@ with DNS disabled and an empty environment, but prefer a non-root user.
 Issue a test certificate for a test enrollment, download it, and check: one A4 page, the name and number
 are readable text, and scanning the QR code opens `PUBLIC_BASE_URL/verify/<id>` (the verification page itself
 arrives in M5).
+
+## Bulk jobs (M4c)
+
+Bulk issuing runs inside the API process and uses the same renderer, one certificate at a time (so `PDF_MAX_CONCURRENT`
+also bounds it). Roughly one to two seconds per certificate with Chromium: a batch of 100 takes a few minutes.
+
+- If the API restarts while a job is running, the job stays `processing`. Two minutes after the last progress, press
+  **Resume job** in the Certificates tab (or `POST /api/v1/bulk-jobs/{id}/resume`). Finished certificates are kept, the
+  half-done one is redone, and no student gets two certificates.
+- A stopped deployment waits up to 15 seconds for the running render to finish before exiting.
+- Only one job per institute runs at a time; **Cancel job** frees the slot.
+- Failed students are listed with a short reason; fix the cause (for example the renderer) and press **Retry failed**.

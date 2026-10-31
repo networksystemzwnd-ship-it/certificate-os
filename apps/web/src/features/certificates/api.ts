@@ -24,3 +24,31 @@ export const certificatesApi = {
   // The download needs the institute header, so it is fetched with the shared client and saved from a blob.
   pdf: (id: string) => apiBlob(`/api/v1/certificates/${id}/pdf`),
 };
+
+export type JobStatus = 'queued' | 'processing' | 'completed' | 'completed_with_errors' | 'failed' | 'cancelled';
+export interface BulkJob {
+  id: string; status: JobStatus; batch_id: string; batch_name: string; template_id: string; template_name: string; template_version: number;
+  total: number; succeeded: number; failed: number; remaining: number; skipped_already_issued: number; skipped_not_eligible: number;
+  created_at: string; started_at: string | null; finished_at: string | null;
+}
+export interface BulkItem {
+  enrollment_id: string; student_name: string; position: number; status: 'queued' | 'processing' | 'succeeded' | 'failed';
+  attempts: number; certificate_id?: string; certificate_number?: string; error?: string;
+}
+export interface BulkPreview { batch_name: string; eligible: number; already_issued: number; not_eligible: number; max_per_job: number }
+
+export const isActive = (s: JobStatus) => s === 'queued' || s === 'processing';
+
+export const bulkApi = {
+  preview: (batch_id: string, template_id: string) =>
+    api<{ preview: BulkPreview }>(`/api/v1/certificates/bulk-preview${qs({ batch_id, template_id })}`),
+  start: (batch_id: string, template_id: string) =>
+    api<{ job: BulkJob }>('/api/v1/certificates/bulk', { method: 'POST', ...json({ batch_id, template_id, template_version: 0 }) }),
+  list: (limit = 5) => api<{ jobs: BulkJob[]; has_more: boolean }>(`/api/v1/bulk-jobs${qs({ limit })}`),
+  get: (id: string) => api<{ job: BulkJob }>(`/api/v1/bulk-jobs/${id}`),
+  items: (id: string, status: string, limit = 100) => api<{ items: BulkItem[]; has_more: boolean }>(`/api/v1/bulk-jobs/${id}/items${qs({ status, limit })}`),
+  retryFailed: (id: string) => api<{ job: BulkJob }>(`/api/v1/bulk-jobs/${id}/retry-failed`, { method: 'POST' }),
+  resume: (id: string) => api<{ job: BulkJob }>(`/api/v1/bulk-jobs/${id}/resume`, { method: 'POST' }),
+  cancel: (id: string) => api<{ job: BulkJob }>(`/api/v1/bulk-jobs/${id}/cancel`, { method: 'POST' }),
+  exportZip: (id: string) => apiBlob(`/api/v1/bulk-jobs/${id}/export`),
+};

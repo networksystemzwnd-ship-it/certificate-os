@@ -32,7 +32,10 @@ func newEnv(t *testing.T) *env {
 	e := &env{w: w, store: certtest.NewMemStore(w), pdf: &pdf.Fake{}}
 	e.f = tenancytest.NewFixture(t, func(f *tenancytest.Fixture) {
 		svc := certificates.NewService(e.store, e.pdf, "https://certs.example.com/")
-		h := &certificates.Handler{Svc: svc, Tenancy: f.TenantH, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+		jobs := certificates.NewJobs(context.Background(), svc, e.store, nil)
+		jobs.Go = func(fn func()) { fn() } // inline: deterministic tests
+		jobs.Audit = w
+		h := &certificates.Handler{Svc: svc, Jobs: jobs, Tenancy: f.TenantH, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
 		h.Register(f.Mux)
 	})
 	return e

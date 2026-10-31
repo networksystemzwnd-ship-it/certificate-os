@@ -128,6 +128,22 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] Docker image with Chromium (the Dockerfile is yours; see the runbook) and an issue/download check in your environment
 - Not included: bulk jobs and ZIP export (M4c), logo/signature images (COS-011), public verification page and replace flow (M5), email delivery (M5). Open: D-151 (who may download).
 
+### M4c — Bulk certificate issuing — Built (needs your verification)
+- Priority: P0 (ZIP export P1)
+- Delivered: migration 0012 (`bulk_jobs`, `bulk_job_items`, RLS, one active job per institute, no deletes); `certificates.Jobs` service and `JobStore` (memory + Postgres, one shared contract); runner with token + lease, resume, retry-failed, cancel; routes `GET /certificates/bulk-preview`, `POST /certificates/bulk`, `GET /bulk-jobs`, `GET /bulk-jobs/{id}`, `/items`, `POST /bulk-jobs/{id}/retry-failed|resume|cancel`, `GET /bulk-jobs/{id}/export` (ZIP + manifest); new permission `certificates.export`; "Issue a whole batch" panel in the Certificates tab; decisions D-152..D-159; OpenAPI 0.10.0.
+- Acceptance:
+  - [x] **M4 exit gate:** a batch of 100 is issued without duplicates: 100 issued certificates, 100 distinct numbers (gapless) and public ids, one live certificate per enrollment, every stored PDF matches its checksum and snapshot; running it again issues nothing (`TestBulkIssuesAHundredWithoutDuplicates`, `-race`)
+  - [x] partial failure: failed items keep a short reason, successful work is kept, retry processes only the failed ones and creates no duplicates
+  - [x] resumable: shutdown mid-job, takeover only after the lease expires, half-done item requeued, a runner holding an old token is locked out, a certificate stored just before a crash is adopted instead of duplicated, foreign certificates are never adopted
+  - [x] cancel keeps what was issued; suspended institute stops/blocks the runner; only one active job per institute
+  - [x] preview shows eligible / already issued / not eligible before anything is created; nothing written when no renderer is configured
+  - [x] permissions: staff cannot start or export, the issue grant cannot export, admin/owner can; suspended institute is read-only and cannot export; other institutes get 404/403 on every route; export audited with counts only; revoked PDFs excluded; manifest is formula-safe (HTTP tests; mutation-checked)
+  - [x] migration 0012 and every job query verified on real PostgreSQL 16 as the restricted runtime role (one-active-job index, state checks, no deletes, RLS fail-closed and cross-tenant, down/up cycle)
+  - [ ] Postgres job store contract with `TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL` (type-checked against a stub only; never run here)
+  - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox; only a syntax check was possible)
+  - [ ] a real batch with Chromium in your environment (the 100-certificate gate ran with the fake renderer; the single-certificate Chromium path was verified in M4b)
+- Not included: a separate worker process (D-155), logo/signature images (COS-011), public verification page and replace flow (M5), email delivery (M5), XLSX import.
+
 ### COS-009 — Institute application schema, state machine and audit log — Built (needs your verification)
 - Priority: P0
 - Delivered: migrations 0004 (audit_logs, append-only) and 0005 (institute_applications); `applications` domain + service; memory and Postgres stores sharing one contract; applicant API (`/api/v1/institute-applications`); audit events for every change; CLI actions audited.
