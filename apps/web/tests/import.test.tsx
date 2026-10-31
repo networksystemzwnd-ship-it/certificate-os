@@ -25,7 +25,7 @@ it('walks upload → mapping → review → confirm → error report', async () 
   const user = userEvent.setup();
   render(<ImportWizard />);
 
-  await user.upload(screen.getByLabelText('CSV file'), new File(['Name,Roll No,Email\nAsha,ST-1,a@x.com\n'], 'students.csv', { type: 'text/csv' }));
+  await user.upload(screen.getByLabelText('CSV or Excel file'), new File(['Name,Roll No,Email\nAsha,ST-1,a@x.com\n'], 'students.csv', { type: 'text/csv' }));
   expect(await screen.findByLabelText(/Full name/)).toHaveValue('0'); // suggested mapping pre-selected
   const upload = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/api/v1/students/imports'))!;
   expect(upload[1]!.body).toBeInstanceOf(FormData);
@@ -51,7 +51,7 @@ it('shows a server-side file problem next to the upload field', async () => {
   });
   const user = userEvent.setup();
   render(<ImportWizard />);
-  await user.upload(screen.getByLabelText('CSV file'), new File(['x'], 'students.xlsx'));
+  await user.upload(screen.getByLabelText('CSV or Excel file'), new File(['x'], 'students.xlsx'));
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Excel files are not supported yet.'));
 });
 
@@ -62,7 +62,7 @@ it('disables the import button when nothing is valid', async () => {
   });
   const user = userEvent.setup();
   render(<ImportWizard />);
-  await user.upload(screen.getByLabelText('CSV file'), new File(['x'], 's.csv'));
+  await user.upload(screen.getByLabelText('CSV or Excel file'), new File(['x'], 's.csv'));
   await user.click(await screen.findByRole('button', { name: 'Check rows' }));
   expect(await screen.findByRole('button', { name: 'Import 0 students' })).toBeDisabled();
 });

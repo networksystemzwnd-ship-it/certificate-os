@@ -41,6 +41,14 @@ Evidence legend: **T** = automated test, **S** = checked by hand on real Postgre
 | Revocation needs a reason; replacement never overwrites (D-164) | T |
 | Verification events store no IP or user agent (D-163) | R |
 
+## 4b. Uploads
+| Control | Evidence |
+|---|---|
+| CSV/XLSX parsing: 2 MB, 2000 rows, 30 columns, 500 characters per cell, control characters refused | T |
+| XLSX read with the standard library only; per-part 24 MB cap (zip bomb), entry cap, only the needed parts opened, no formula evaluation (D-179) | T (mutation-checked) |
+| Abandoned uploads purged after 7 days (D-178) | T, S |
+| Parsing of real-world workbooks from Excel/LibreOffice | **U** |
+
 ## 5. Email
 | Control | Evidence |
 |---|---|
@@ -59,7 +67,7 @@ Evidence legend: **T** = automated test, **S** = checked by hand on real Postgre
 ## 7. Open items (not done)
 1. **Dependency scanning** (Go modules, npm) is not set up; the build sandbox could not reach the registries. Add `govulncheck` and `npm audit` to CI.
 2. **Rate limiters are per process** (D-108). Behind a proxy or with several replicas they are weaker; a shared limiter and trusted-proxy configuration are needed before scaling out.
-3. **Uploads** (COS-011) are not built, so there is no upload scanning to review yet.
+3. **Document uploads** (COS-011) are not built. Import files (CSV/XLSX) are parsed, never stored as files, and have no malware scanning because nothing is executed or served back.
 4. **No real-provider email test**, no bounce handling.
 5. **No external penetration test** and no independent review of the RLS policies.
 6. **Postgres stores through real pgx**, the frontend (tests, lint, typecheck) and the Docker image were not run in the build sandbox (**U**).

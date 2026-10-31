@@ -140,7 +140,7 @@ func (h *Handler) upload(w http.ResponseWriter, r *http.Request) {
 	}()
 	f, hdr, err := r.FormFile("file")
 	if err != nil {
-		httpx.WriteError(w, r, http.StatusBadRequest, httpx.CodeBadRequest, "Choose a CSV file to upload.", map[string]string{"file": "Choose a CSV file to upload."})
+		httpx.WriteError(w, r, http.StatusBadRequest, httpx.CodeBadRequest, "Choose a CSV or Excel (.xlsx) file to upload.", map[string]string{"file": "Choose a CSV or Excel (.xlsx) file to upload."})
 		return
 	}
 	defer f.Close()

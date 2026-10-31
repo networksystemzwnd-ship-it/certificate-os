@@ -63,6 +63,22 @@ func ParseCSV(data []byte) (headers []string, rows [][]string, err error) {
 		if err != nil {
 			return nil, nil, &FileError{"The file is not valid CSV (" + shortCSVErr(err) + ")."}
 		}
+		all = append(all, rec)
+		if len(all) > MaxRows+1+MaxBlankRows {
+			return nil, nil, &FileError{fmt.Sprintf("The file has more than %d rows. Split it into smaller files.", MaxRows)}
+		}
+	}
+	return shape(all)
+}
+
+// MaxBlankRows bounds how many blank lines are read (and dropped) beyond MaxRows.
+const MaxBlankRows = 1000
+
+// shape turns raw records (from CSV or a spreadsheet) into headers and rows: it trims cells, drops blank
+// rows, enforces the limits, rejects control characters and pads or trims rows to the header width.
+func shape(raw [][]string) (headers []string, rows [][]string, err error) {
+	var all [][]string
+	for _, rec := range raw {
 		blank := true
 		for i, c := range rec {
 			c = strings.TrimSpace(c)

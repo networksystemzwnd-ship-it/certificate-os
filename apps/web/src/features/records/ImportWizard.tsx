@@ -90,12 +90,12 @@ export function ImportWizard() {
       {!job && (
         <div>
           <p>
-            Upload a CSV file (in Excel: <em>Save As → CSV UTF-8</em>). The first row must be the column headings. Up to 2000 rows
-            and 2 MB. Nothing is saved until you confirm.
+            Upload a CSV or Excel (.xlsx) file; only the first sheet is read. The first row must be the column headings. Up to 2000 rows
+            and 2 MB. Phone numbers and ids that start with 0 should be formatted as text in Excel. Nothing is saved until you confirm.
           </p>
-          <label htmlFor="import-file">CSV file</label>
+          <label htmlFor="import-file">CSV or Excel file</label>
           <br />
-          <input id="import-file" type="file" accept=".csv,text/csv,text/plain" onChange={onFile} disabled={busy} />
+          <input id="import-file" type="file" accept=".csv,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={onFile} disabled={busy} />
           {uploadErr && <p role="alert">{uploadErr}</p>}
         </div>
       )}

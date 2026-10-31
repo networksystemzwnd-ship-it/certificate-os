@@ -33,10 +33,10 @@ func event(t tenancy.Tenant, action, reqID string, meta map[string]any) audit.Ev
 	return audit.Event{ActorType: audit.ActorUser, ActorUserID: t.UserID, Action: action, EntityType: "student_import", RequestID: reqID, Metadata: meta}
 }
 
-// Upload parses a CSV and stores a new job awaiting column mapping. Audit metadata holds counts only:
+// Upload parses a CSV or XLSX file and stores a new job awaiting column mapping. Audit metadata holds counts only:
 // never file names or cell values.
 func (s *Service) Upload(ctx context.Context, t tenancy.Tenant, filename string, data []byte, reqID string) (Import, error) {
-	headers, rows, err := ParseCSV(data)
+	headers, rows, err := ParseUpload(data)
 	if err != nil {
 		return Import{}, err
 	}

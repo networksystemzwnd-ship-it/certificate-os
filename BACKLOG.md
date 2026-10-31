@@ -172,6 +172,17 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
 - Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
 
+### XLSX student import — Built (needs your verification)
+- Priority: P0 (brain §3.4)
+- Delivered: `imports.ParseXLSX` / `ParseUpload` (D-179), upload accepts `.xlsx`, wizard text and file picker; OpenAPI 0.16.0.
+- Acceptance:
+  - [x] shared and inline strings, empty cells between values, built-in and custom date formats (checked against an independent date calculation), 1904 workbooks, exponent numbers, cached formula values, errors and booleans, first sheet only (tests)
+  - [x] zip bomb refused (mutation-checked), row/column/far-column limits, damaged XML, non-workbook zip, old .xls give clear errors; formula-looking text stays text
+  - [x] HTTP upload of an .xlsx end to end (memory stores)
+  - [ ] a real Excel / LibreOffice / Google Sheets export: the tests use hand-built minimal workbooks, so please import one of your real files and report anything odd
+  - [ ] frontend test run (never run in the build sandbox)
+- Not included: `.xls`, choosing a sheet, merged-cell expansion, rich-number formats (percent, currency are read as the raw number).
+
 ### Abandoned import purge — Built (needs your verification)
 - Priority: P1 (privacy)
 - Delivered: migration 0015, `imports.Store.PurgeAbandoned`, hourly job (D-178).

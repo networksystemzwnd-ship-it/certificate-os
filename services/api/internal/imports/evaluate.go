@@ -72,6 +72,13 @@ func ParseDate(s, format string) (string, bool) {
 	if s == "" {
 		return "", true
 	}
+	// An ISO date (4-digit year first) is unambiguous, so it is accepted whatever format was declared:
+	// this is what spreadsheet date cells are converted to.
+	if len(s) == 10 && s[4] == '-' && s[7] == '-' {
+		if t, err := time.Parse("2006-01-02", s); err == nil && t.Year() >= 1900 && t.Year() <= 2200 {
+			return t.Format("2006-01-02"), true
+		}
+	}
 	var layout string
 	switch format {
 	case "dmy":

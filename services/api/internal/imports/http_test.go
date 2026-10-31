@@ -191,6 +191,24 @@ func TestImportWizardOverHTTP(t *testing.T) {
 	}
 }
 
+func TestImportUploadAcceptsXLSX(t *testing.T) {
+	e := newHTTPEnv(t)
+	data := build(t, xl{shared: `<si><t>Name</t></si><si><t>Email</t></si><si><t>Asha Rao</t></si><si><t>asha@x.com</t></si>`,
+		sheet: `<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row><row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2" t="s"><v>3</v></c></row>`})
+	body, ct := multipartFile("file", "students.xlsx", data)
+	rr, out := e.do("POST", "/api/v1/students/imports", "a-admin@t.test", e.f.A.ID, ct, body)
+	if rr.Code != 201 {
+		t.Fatalf("xlsx upload: %d %s", rr.Code, rr.Body.String())
+	}
+	imp, _ := out["import"].(map[string]any)
+	if imp["filename"] != "students.xlsx" || imp["row_count"] != nil && imp["row_count"] != float64(1) {
+		t.Errorf("unexpected import %v", imp)
+	}
+	if hs, _ := imp["headers"].([]any); len(hs) != 2 {
+		t.Errorf("headers %v", imp["headers"])
+	}
+}
+
 func TestImportUploadRejections(t *testing.T) {
 	e := newHTTPEnv(t)
 	A := e.f.A.ID
@@ -199,7 +217,8 @@ func TestImportUploadRejections(t *testing.T) {
 		data  []byte
 		want  int
 	}{
-		"xlsx":        {"file", []byte("PK\x03\x04..."), 422},
+		"broken xlsx": {"file", []byte("PK\x03\x04..."), 422},
+		"old xls":     {"file", []byte("\xd0\xcf\x11\xe0..."), 422},
 		"not csv/utf": {"file", []byte("Name\nJos\xe9\n"), 422},
 		"header only": {"file", []byte("Name\n"), 422},
 		"too large":   {"file", bytes.Repeat([]byte("x"), imports.MaxBytes+1000), 422},

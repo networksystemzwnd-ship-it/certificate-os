@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.15.0
+  version: 0.16.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -277,11 +277,11 @@ paths:
         '422': { $ref: '#/components/responses/Error' }
   /api/v1/students/imports:
     post:
-      summary: Upload a CSV for import (requires students.import)
+      summary: Upload a CSV or XLSX for import (requires students.import)
       description: >
-        multipart/form-data with a `file` field (CSV, UTF-8, up to 2 MB and 2000 rows; `;` and tab delimiters are
+        multipart/form-data with a `file` field (CSV, UTF-8, or an .xlsx workbook whose FIRST sheet is read; up to 2 MB and 2000 rows; spreadsheet dates become YYYY-MM-DD; `;` and tab delimiters are
         detected). Nothing is written to the student list. Returns the job with the headers, a suggested column
-        mapping and a preview. XLSX is not supported yet (422 with instructions).
+        mapping and a preview. Old .xls files and damaged or oversized workbooks get a 422 with instructions.
       security: [{ cookieAuth: [] }]
       parameters: [{ $ref: '#/components/parameters/InstituteId' }]
       requestBody:
