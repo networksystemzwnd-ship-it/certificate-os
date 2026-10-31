@@ -11,6 +11,7 @@ import (
 
 	"github.com/certificate-os/api/internal/audit"
 	"github.com/certificate-os/api/internal/pdf"
+	"github.com/certificate-os/api/internal/platform/metrics"
 	"github.com/certificate-os/api/internal/qr"
 	"github.com/certificate-os/api/internal/templates"
 	"github.com/certificate-os/api/internal/tenancy"
@@ -24,6 +25,8 @@ type Service struct {
 	// PublicBaseURL is the origin printed in the QR code (https://certs.example.com, no trailing slash).
 	PublicBaseURL string
 	Now           func() time.Time
+	// Metrics is optional (nil is fine).
+	Metrics *metrics.Registry
 }
 
 func NewService(st Store, r pdf.Renderer, publicBaseURL string) *Service {
@@ -99,6 +102,7 @@ func (s *Service) Issue(ctx context.Context, t tenancy.Tenant, req IssueRequest,
 func (s *Service) finish(ctx context.Context, t tenancy.Tenant, cert Certificate, reqID string) (Certificate, error) {
 	bg := context.WithoutCancel(ctx)
 	fail := func(reason string, cause error) (Certificate, error) {
+		s.Metrics.Inc("cos_certificate_failures_total", "reason", reason)
 		if _, ferr := s.Store.Fail(bg, t.Scope(), cert.ID, reason, event(t, "certificate.issue_failed", reqID, map[string]any{"reason": reason})); ferr != nil {
 			return Certificate{}, fmt.Errorf("%w: %v (and marking it failed: %v)", ErrRenderFailed, cause, ferr)
 		}

@@ -423,3 +423,21 @@ func (s *Store) Postpone(ctx context.Context, sc tenancy.Scope, id string, until
 		return err
 	})
 }
+
+func (s *Store) Depth(ctx context.Context, now time.Time) (delivery.Depth, error) {
+	var d delivery.Depth
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return d, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.worker', 'scan', true)`); err != nil {
+		return d, err
+	}
+	var secs float64
+	err = tx.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE due_at <= $1),
+			coalesce(extract(epoch FROM ($1::timestamptz - min(due_at) FILTER (WHERE due_at <= $1))), 0)::float8
+		FROM delivery_queue WHERE active`, now).Scan(&d.Active, &d.Overdue, &secs)
+	d.OldestOverdue = time.Duration(secs * float64(time.Second))
+	return d, err
+}

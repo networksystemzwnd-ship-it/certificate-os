@@ -41,6 +41,7 @@ import (
 	"github.com/certificate-os/api/internal/platform/config"
 	"github.com/certificate-os/api/internal/platform/health"
 	"github.com/certificate-os/api/internal/platform/httpx"
+	"github.com/certificate-os/api/internal/platform/metrics"
 	"github.com/certificate-os/api/internal/platform/migrate"
 	"github.com/certificate-os/api/internal/platform/tenantdb"
 	"github.com/certificate-os/api/internal/records"
@@ -188,7 +189,9 @@ func run(args []string) error {
 		log.Warn("certificate pdf rendering is disabled (PDF_CHROME_PATH not set): issuing returns 503 until it is configured")
 	}
 	certsStore := certspg.New(pool)
+	reg := metrics.New()
 	certsSvc := certificates.NewService(certsStore, renderer, cfg.PublicBaseURL)
+	certsSvc.Metrics = reg
 	// Bulk jobs run in this process. ctx ends on SIGINT/SIGTERM: runners stop between items and the job is
 	// resumed later (POST /api/v1/bulk-jobs/{id}/resume) once its lease has run out.
 	bulkJobs := certificates.NewJobs(ctx, certsSvc, certsStore, func(msg string, args ...any) { log.Error(msg, args...) })
@@ -203,7 +206,21 @@ func run(args []string) error {
 	} else {
 		log.Warn("email delivery is disabled (EMAIL_PROVIDER=none): sending certificates by email returns 503 until it is configured")
 	}
-	deliverySvc := delivery.NewService(deliverypg.New(pool), certsStore, mailer, cfg.EmailFrom, cfg.PublicBaseURL, log)
+	deliveryStore := deliverypg.New(pool)
+	deliverySvc := delivery.NewService(deliveryStore, certsStore, mailer, cfg.EmailFrom, cfg.PublicBaseURL, log)
+	deliverySvc.Metrics = reg
+	reg.GaugeFunc("cos_delivery_queue", "Unfinished email deliveries across institutes: state=active|overdue; seconds is the age of the oldest overdue one.", func(c context.Context) []metrics.Sample {
+		d, err := deliveryStore.Depth(c, time.Now())
+		if err != nil {
+			log.Warn("could not read the delivery queue depth for metrics", "err", err)
+			return nil
+		}
+		return []metrics.Sample{{Labels: map[string]string{"state": "active"}, Value: float64(d.Active)}, {Labels: map[string]string{"state": "overdue"}, Value: float64(d.Overdue)},
+			{Labels: map[string]string{"state": "oldest_overdue_seconds"}, Value: d.OldestOverdue.Seconds()}}
+	})
+	// Scrape endpoint: off unless METRICS_TOKEN is set; it requires that token as a bearer token. Keep it off the
+	// public internet (see docs/runbooks/monitoring.md).
+	mux.Handle("GET /metrics", reg.Handler(cfg.MetricsToken))
 	(&delivery.Handler{Svc: deliverySvc, JobCertificates: delivery.JobCertificates(bulkJobs), Log: log, Tenancy: tenantH}).Register(mux)
 	workerDone := make(chan struct{})
 	go func() { defer close(workerDone); deliverySvc.Run(ctx, 5*time.Second) }()
@@ -220,7 +237,7 @@ func run(args []string) error {
 
 	srv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           httpx.Chain(log, httpx.CORS(cfg.WebOrigin, httpx.CSRF(cfg.WebOrigin, mux))),
+		Handler:           httpx.Chain(log, reg.HTTP(httpx.CORS(cfg.WebOrigin, httpx.CSRF(cfg.WebOrigin, mux)))),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

@@ -1,4 +1,4 @@
-.PHONY: dev down test lint migrate seed e2e fmt
+.PHONY: dev down test lint migrate seed e2e fmt restore-check
 
 dev:
 	cp -n .env.example .env || true
@@ -27,3 +27,7 @@ test:
 
 e2e:
 	@echo "E2E suite arrives with later milestones."
+
+# Usage: make restore-check DB=certos   (PGHOST/PGPORT/PGUSER[/PGPASSWORD] from the environment)
+restore-check:
+	scripts/restore-check.sh $(DB)

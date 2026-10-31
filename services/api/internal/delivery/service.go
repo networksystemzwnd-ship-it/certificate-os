@@ -13,6 +13,7 @@ import (
 	"github.com/certificate-os/api/internal/audit"
 	"github.com/certificate-os/api/internal/certificates"
 	"github.com/certificate-os/api/internal/delivery/mail"
+	"github.com/certificate-os/api/internal/platform/metrics"
 	"github.com/certificate-os/api/internal/tenancy"
 )
 
@@ -27,6 +28,8 @@ type Service struct {
 	PublicBaseURL string
 	Log           *slog.Logger
 	Now           func() time.Time
+	// Metrics is optional (nil is fine). Labels are outcome and our own error codes only.
+	Metrics *metrics.Registry
 }
 
 func NewService(st Store, certs certificates.Store, m mail.Mailer, from, publicBaseURL string, log *slog.Logger) *Service {
@@ -204,6 +207,11 @@ func (s *Service) process(ctx context.Context, ref DueRef) bool {
 		if fin.Outcome == OutcomeFailed {
 			action = "delivery.failed"
 		}
+	}
+	if fin.Outcome == OutcomeAccepted {
+		s.Metrics.Inc("cos_delivery_attempts_total", "outcome", "accepted", "code", "none")
+	} else {
+		s.Metrics.Inc("cos_delivery_attempts_total", "outcome", string(fin.Outcome), "code", fin.Code)
 	}
 	if _, err := s.Store.Finish(ctx, sc, d.ID, tok, fin, systemEvent(action, meta)); err != nil {
 		// The mail may have been accepted without being recorded: the delivery will be picked up again once the

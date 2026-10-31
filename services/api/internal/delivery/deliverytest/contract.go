@@ -416,4 +416,34 @@ func RunStoreContract(t *testing.T, newHarness func(t *testing.T) Harness) {
 			t.Fatalf("certificate filter %v", l)
 		}
 	})
+
+	t.Run("depth counts unfinished work across institutes and the age of the oldest overdue delivery", func(t *testing.T) {
+		h := newHarness(t)
+		a, b, u := h.NewScope(), h.NewScope(), h.NewUser()
+		d0, err := h.Deliveries.Depth(ctx, t0)
+		must(t, err)
+		if d0.Active != 0 || d0.Overdue != 0 || d0.OldestOverdue != 0 {
+			t.Fatalf("empty: %+v", d0)
+		}
+		ca, cb, cc := cert(t, h, a, u, "a@example.com"), cert(t, h, b, u, "b@example.com"), cert(t, h, a, u, "c@example.com")
+		_, err = req(h, a, u, ca.ID, t0, false)
+		must(t, err)
+		_, err = req(h, b, u, cb.ID, t0.Add(10*time.Minute), false)
+		must(t, err)
+		dc, err := req(h, a, u, cc.ID, t0.Add(time.Hour), false)
+		must(t, err)
+		got, err := h.Deliveries.Depth(ctx, t0.Add(30*time.Minute))
+		must(t, err)
+		if got.Active != 3 || got.Overdue != 2 || got.OldestOverdue != 30*time.Minute {
+			t.Fatalf("depth %+v", got)
+		}
+		cl, err := claim(h, a, dc.ID, "tok", t0.Add(time.Hour))
+		must(t, err)
+		_, err = finish(h, a, dc.ID, cl.Token, delivery.FinishInput{Outcome: delivery.OutcomeAccepted, StartedAt: t0, At: t0}, "delivery.accepted")
+		must(t, err)
+		got, _ = h.Deliveries.Depth(ctx, t0.Add(2*time.Hour))
+		if got.Active != 2 || got.Overdue != 2 {
+			t.Fatalf("after finishing one: %+v", got)
+		}
+	})
 }

@@ -8,7 +8,7 @@
 | M3 Institute records | In progress (COS-RLS, M3a courses/batches/students/enrollments and M3b CSV import and M3c staff invitations built; needs your verification; XLSX import still to do) |
 | M4 Templates and issuance | Built, needs your verification (M4a templates, M4b single issuing, M4c bulk jobs with progress/retry/ZIP; exit gate of 100 certificates without duplicates passes in tests; logo/signature images and the Docker/Chromium image still to do) |
 | M5 Verification and delivery | Built (M5a replace flow and public verification; M5b email delivery with attempts, retry and bulk send), needs your verification |
-| M6 Pilot readiness | Not started |
+| M6 Pilot readiness | Built (M6a dashboards; M6b metrics, backup/restore rehearsal, runbooks, security self-review, privacy/retention DRAFT), needs your verification; pilot feedback fixes still to do |
 | M7 Post-MVP | Not started |
 
 Rule: do not start certificate PDF generation before COS-007 and COS-008 pass their quality gates.

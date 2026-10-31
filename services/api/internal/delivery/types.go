@@ -137,6 +137,13 @@ type FinishInput struct {
 	NextAttemptAt time.Time // OutcomeRetry
 }
 
+// Depth describes the work queue across all institutes (ids and times only): Active deliveries not finished, Overdue
+// of them due now or earlier, and how long the oldest overdue one has been waiting.
+type Depth struct {
+	Active, Overdue int
+	OldestOverdue   time.Duration
+}
+
 // Store persists deliveries. Like the other stores, every method takes the Scope and may only touch that
 // institute's rows (another institute's id is indistinguishable from a missing one); mutations run in one
 // transaction with their audit event. Due is the one cross-institute call and returns ids only.
@@ -154,6 +161,8 @@ type Store interface {
 
 	// Due lists deliveries ready to send across all institutes (queued and due, or sending with an expired lease).
 	Due(ctx context.Context, now time.Time, limit int) ([]DueRef, error)
+	// Depth reports queue depth for monitoring.
+	Depth(ctx context.Context, now time.Time) (Depth, error)
 	// Claim takes ownership of a due delivery: status sending, attempts+1, a lease. ErrState when it is not due
 	// or someone else holds it; ErrSuspended when the institute is not active (nothing changes).
 	Claim(ctx context.Context, s tenancy.Scope, id, token string, now time.Time, lease time.Duration) (Claim, error)

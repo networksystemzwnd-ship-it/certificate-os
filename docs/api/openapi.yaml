@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.13.0
+  version: 0.14.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -14,6 +14,14 @@ paths:
     get:
       summary: Readiness (dependency health)
       responses: { '200': { description: Ready }, '503': { description: A dependency is unavailable } }
+  /metrics:
+    get:
+      summary: Prometheus text metrics (operations)
+      description: Disabled (404) unless METRICS_TOKEN is configured. Requires `Authorization: Bearer <METRICS_TOKEN>`. Contains no personal data.
+      responses:
+        '200': { description: Prometheus text exposition format, content: { text/plain: { schema: { type: string } } } }
+        '401': { description: Missing or wrong token }
+        '404': { description: Metrics are disabled }
   /api/v1/auth/register:
     post:
       summary: Create a normal user account (never accepts a role)

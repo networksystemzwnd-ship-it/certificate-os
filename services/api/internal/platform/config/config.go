@@ -26,6 +26,8 @@ type Config struct {
 	CookieSecure   bool          // derived: true in production
 
 	PublicBaseURL string // origin used in certificate QR codes (verification links); defaults to WebOrigin
+	// MetricsToken enables GET /metrics (Prometheus text) for a scraper that presents it as a bearer token. Empty = disabled.
+	MetricsToken string
 	// Email delivery (M5b). EmailProvider is "none" (sending disabled) or "smtp". SMTPPassword is a secret: never log it.
 	EmailProvider    string
 	EmailFrom        string // sender address, e.g. "Certificates <no-reply@example.com>"
@@ -101,6 +103,10 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 	cfg.PDFMaxConcurrent = conc
 
+	cfg.MetricsToken = get("METRICS_TOKEN", "")
+	if cfg.MetricsToken != "" && len(cfg.MetricsToken) < 16 {
+		errs = append(errs, errors.New("METRICS_TOKEN must be at least 16 characters (or empty to disable /metrics)"))
+	}
 	cfg.EmailProvider = get("EMAIL_PROVIDER", "none")
 	switch cfg.EmailProvider {
 	case "none":

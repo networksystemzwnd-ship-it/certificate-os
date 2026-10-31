@@ -311,3 +311,28 @@ func (m *MemStore) Postpone(_ context.Context, s tenancy.Scope, id string, until
 	}
 	return nil
 }
+
+func (m *MemStore) Depth(_ context.Context, now time.Time) (delivery.Depth, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var d delivery.Depth
+	var oldest time.Time
+	for _, t := range m.data {
+		for _, r := range t {
+			if !r.d.Status.Active() {
+				continue
+			}
+			d.Active++
+			if !r.due.After(now) {
+				d.Overdue++
+				if oldest.IsZero() || r.due.Before(oldest) {
+					oldest = r.due
+				}
+			}
+		}
+	}
+	if !oldest.IsZero() {
+		d.OldestOverdue = now.Sub(oldest)
+	}
+	return d, nil
+}

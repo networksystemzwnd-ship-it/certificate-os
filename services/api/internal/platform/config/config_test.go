@@ -175,3 +175,17 @@ func TestEmailSettings(t *testing.T) {
 		t.Errorf("plain SMTP for local development must be allowed: %v", err)
 	}
 }
+
+func TestMetricsToken(t *testing.T) {
+	cfg, err := Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x"}))
+	if err != nil || cfg.MetricsToken != "" {
+		t.Fatalf("default must be disabled: %+v %v", cfg, err)
+	}
+	cfg, err = Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x", "METRICS_TOKEN": "0123456789abcdef"}))
+	if err != nil || cfg.MetricsToken != "0123456789abcdef" {
+		t.Fatalf("%+v %v", cfg, err)
+	}
+	if _, err := Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x", "METRICS_TOKEN": "short"})); err == nil {
+		t.Fatal("a short token must be refused")
+	}
+}

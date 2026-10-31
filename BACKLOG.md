@@ -172,6 +172,19 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
 - Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
 
+### M6b — Operations readiness — Built (needs your verification)
+- Priority: P0
+- Delivered: `/metrics` (D-174), delivery queue depth, `scripts/restore-check.sh` (D-175), runbooks `backup-restore`, `monitoring`, `deployment`, `docs/security-review.md`, DRAFT `docs/privacy-retention.md` (D-176); OpenAPI 0.14.0; `make restore-check`.
+- Acceptance:
+  - [x] metrics endpoint disabled without a token, token checked, no personal data in labels (tests)
+  - [x] restore rehearsal passes on real PostgreSQL 16 and detects a changed row and a missing FORCE RLS; restore on a fresh server verified (needs the runtime role first)
+  - [ ] a restore rehearsal on YOUR server and backup storage
+  - [ ] Prometheus scraping and alert rules (suggestions only in `monitoring.md`)
+  - [ ] first deployment following `deployment.md` (Docker was never run in the build sandbox)
+  - [ ] legal review of `privacy-retention.md`; retention periods decided
+  - [ ] dependency scanning, shared rate limiter, external penetration test (see `security-review.md` section 7)
+- Not included: pilot-feedback fixes, deletion/closure workflows, automated purge jobs.
+
 ### M4c — Bulk certificate issuing — Built (needs your verification)
 - Priority: P0 (ZIP export P1)
 - Delivered: migration 0012 (`bulk_jobs`, `bulk_job_items`, RLS, one active job per institute, no deletes); `certificates.Jobs` service and `JobStore` (memory + Postgres, one shared contract); runner with token + lease, resume, retry-failed, cancel; routes `GET /certificates/bulk-preview`, `POST /certificates/bulk`, `GET /bulk-jobs`, `GET /bulk-jobs/{id}`, `/items`, `POST /bulk-jobs/{id}/retry-failed|resume|cancel`, `GET /bulk-jobs/{id}/export` (ZIP + manifest); new permission `certificates.export`; "Issue a whole batch" panel in the Certificates tab; decisions D-152..D-159; OpenAPI 0.10.0.
