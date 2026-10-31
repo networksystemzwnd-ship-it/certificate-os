@@ -113,6 +113,21 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox)
 - Not included: logo/signature images (needs COS-011 uploads), PDF rendering, real QR, certificate numbers, issuing (M4b+). Open decisions for M4b: PDF renderer (brain suggests a pinned Chromium) and the certificate number format/scope.
 
+### M4b — Certificate issuing (single), PDF, QR, download, revoke — Built (needs your verification)
+- Priority: P0
+- Delivered: migration 0011 (`certificate_counters`, `certificates`, `certificate_files`: RLS, immutability triggers, one live certificate per enrollment); `certificates` package (service, REST API, memory and Postgres stores sharing one contract); `pdf` package (pinned-Chromium renderer with hardening, fake for tests); `qr` package (own encoder); config `PUBLIC_BASE_URL`, `PDF_CHROME_*`; Certificates tab (issue from a completed enrollment, list/search, download, revoke); audit events `certificate.issue_started/issued/issue_failed/revoked` (ids, numbers, template versions only).
+- Acceptance:
+  - [x] a real Chromium run produced one A4 page whose text matches the snapshot (name, course, number, date) and whose QR code decoded to `PUBLIC_BASE_URL/verify/<43-char id>` (checked with pdftotext, pdfinfo and OpenCV)
+  - [x] QR encoder decodes correctly in an independent decoder for 55 payloads across versions 1-10
+  - [x] never issued without a stored PDF: render failure leaves a `failed` record, no renderer configured returns 503 and writes nothing (HTTP tests)
+  - [x] numbers sequential per institute/year, never reused, no gaps from refused attempts; double issue refused; stale pending abandoned (contract tests)
+  - [x] staff read/download only, issue needs the issue permission, revoke admin/owner, suspended institute read-only, other institutes get 404/403 on every route (HTTP tests, `-race`; mutation-checked)
+  - [x] migration 0011 and every store query verified on real PostgreSQL 16 as the restricted runtime role (immutable snapshot/number/PDF, no deletes, RLS fail-closed, counter upsert)
+  - [ ] Postgres certificate store contract with `TEST_DATABASE_URL` + `TEST_APP_DATABASE_URL` (type-checked against a stub only; never run here)
+  - [ ] frontend tests/lint/typecheck (`npm ci`; never run in the build sandbox)
+  - [ ] Docker image with Chromium (the Dockerfile is yours; see the runbook) and an issue/download check in your environment
+- Not included: bulk jobs and ZIP export (M4c), logo/signature images (COS-011), public verification page and replace flow (M5), email delivery (M5). Open: D-151 (who may download).
+
 ### COS-009 — Institute application schema, state machine and audit log — Built (needs your verification)
 - Priority: P0
 - Delivered: migrations 0004 (audit_logs, append-only) and 0005 (institute_applications); `applications` domain + service; memory and Postgres stores sharing one contract; applicant API (`/api/v1/institute-applications`); audit events for every change; CLI actions audited.

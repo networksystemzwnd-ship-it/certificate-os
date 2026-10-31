@@ -71,3 +71,8 @@ export async function api<T>(path: string, init: RequestInit = {}, baseUrl = BAS
 export async function apiText(path: string, init: RequestInit = {}, baseUrl = BASE_URL): Promise<string> {
   return (await request(path, init, baseUrl)).text();
 }
+
+/** For binary downloads (e.g. certificate PDFs): same headers, credentials and error handling as api(). */
+export async function apiBlob(path: string, init: RequestInit = {}, baseUrl = BASE_URL): Promise<Blob> {
+  return (await request(path, init, baseUrl)).blob();
+}

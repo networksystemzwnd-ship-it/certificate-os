@@ -102,3 +102,41 @@ func TestValidRoleName(t *testing.T) {
 		}
 	}
 }
+
+func TestCertificateRenderingSettings(t *testing.T) {
+	base := map[string]string{"DATABASE_URL": "postgres://x"}
+	with := func(extra map[string]string) (Config, error) {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return Load(func(k string) (string, bool) { v, ok := m[k]; return v, ok })
+	}
+	cfg, err := with(nil)
+	if err != nil || cfg.PublicBaseURL != "http://localhost:5173" || cfg.PDFChromePath != "" || cfg.PDFNoSandbox || cfg.PDFMaxConcurrent != 2 {
+		t.Fatalf("defaults: %+v %v", cfg, err)
+	}
+	cfg, err = with(map[string]string{"PUBLIC_BASE_URL": "https://certs.example.com/", "PDF_CHROME_PATH": "/usr/bin/chromium", "PDF_CHROME_NO_SANDBOX": "true", "PDF_MAX_CONCURRENT": "4"})
+	if err != nil || cfg.PublicBaseURL != "https://certs.example.com" || cfg.PDFChromePath != "/usr/bin/chromium" || !cfg.PDFNoSandbox || cfg.PDFMaxConcurrent != 4 {
+		t.Fatalf("custom: %+v %v", cfg, err)
+	}
+	for name, env := range map[string]map[string]string{
+		"relative chrome path": {"PDF_CHROME_PATH": "chromium"},
+		"bad bool":             {"PDF_CHROME_NO_SANDBOX": "maybe"},
+		"zero concurrency":     {"PDF_MAX_CONCURRENT": "0"},
+		"huge concurrency":     {"PDF_MAX_CONCURRENT": "99"},
+		"base url with path":   {"PUBLIC_BASE_URL": "https://certs.example.com/verify"},
+		"base url not http":    {"PUBLIC_BASE_URL": "ftp://certs.example.com"},
+	} {
+		if _, err := with(env); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	prod := map[string]string{"APP_ENV": "production", "WEB_ORIGIN": "https://app.example.com", "MIGRATE_DATABASE_URL": "postgres://owner", "PUBLIC_BASE_URL": "http://certs.example.com"}
+	if _, err := with(prod); err == nil {
+		t.Error("http PUBLIC_BASE_URL accepted in production")
+	}
+}

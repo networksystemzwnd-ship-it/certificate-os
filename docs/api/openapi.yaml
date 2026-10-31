@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: CertificateOS API
-  version: 0.8.0
+  version: 0.9.0
   description: |
     Cookie-session authentication. State-changing requests must send `X-CSRF-Protection: 1`.
     Errors use a single envelope: `{ "error": { "code", "message", "request_id", "details" } }`.
@@ -553,6 +553,83 @@ paths:
       responses:
         '200': { description: "OK: {html}" }
         '404': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates:
+    post:
+      summary: Issue one certificate for a completed enrollment (requires certificates.issue)
+      description: >
+        Allocates the next number (CERT-YYYY-NNNNNN, per institute and UTC year), freezes an immutable snapshot of
+        what the certificate shows, renders the PDF and stores it. The certificate is reported as issued only
+        after the PDF is stored. `template_version` 0 or omitted means the template's current version. 422 when
+        the enrollment is not completed, the student is archived or the template is archived; 409 when the
+        enrollment already has a live certificate; 503 `render_unavailable` when no PDF renderer is configured
+        (nothing is written); 502 `render_failed` when rendering failed (kept as a `failed` record, its number is
+        never reused).
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [enrollment_id, template_id], properties: { enrollment_id: { type: string }, template_id: { type: string }, template_version: { type: integer, minimum: 0, maximum: 100 } } }
+      responses:
+        '201': { description: "Created: {certificate}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '502': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+    get:
+      summary: List certificates, newest first (requires certificates.read)
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/InstituteId'
+        - { name: status, in: query, schema: { type: string, enum: [pending, issued, failed, revoked] } }
+        - { name: student_id, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string }, description: Matches the certificate number or the student name }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 } }
+      responses:
+        '200': { description: "OK: {certificates: [...], has_more, limit, offset}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates/{cid}:
+    get:
+      summary: One certificate with its snapshot fields, status and verification link (requires certificates.read)
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: cid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: "OK: {certificate}" }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates/{cid}/pdf:
+    get:
+      summary: Download the stored PDF of an issued or revoked certificate (requires certificates.read)
+      description: >
+        Served as an attachment with `Cache-Control: private, no-store`, `X-Content-Type-Options: nosniff` and
+        the SHA-256 of the file as ETag. 404 for pending or failed certificates and for other institutes.
+        Needs the X-Institute-ID header like every tenant route, so fetch it with the API client and save the blob.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: cid, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: The PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/v1/certificates/{cid}/revoke:
+    post:
+      summary: Revoke an issued certificate (requires certificates.revoke)
+      description: A reason of 3–500 characters is required. The PDF stays stored. A revoked enrollment can be issued again.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/InstituteId' }, { name: cid, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3, maxLength: 500 } } }
+      responses:
+        '200': { description: "OK: {certificate}" }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Not issued, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
         '422': { $ref: '#/components/responses/Error' }
   /api/v1/institute-applications:
     post:

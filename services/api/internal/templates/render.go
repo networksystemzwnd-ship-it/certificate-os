@@ -10,6 +10,8 @@ type RenderData struct {
 	StudentName, CourseName, BatchName, InstituteName string
 	CompletionDate, IssueDate, CertificateNumber      string
 	Grade                                             string
+	// QRSVG is trusted markup produced by package qr (never user input). Empty means "no real QR code".
+	QRSVG string
 }
 
 // SampleData is what previews show (never real student data).
@@ -69,15 +71,15 @@ func Render(c Config, d RenderData, preview bool) string {
 	if lk.font == "" {
 		lk = looks["minimal"]
 	}
-	w, h := "297mm", "210mm"
+	w, h, pageSize := "297mm", "210mm", "A4 landscape"
 	if c.Orientation == "portrait" {
-		w, h = "210mm", "297mm"
+		w, h, pageSize = "210mm", "297mm", "A4 portrait"
 	}
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html lang="en"><head><meta charset="utf-8">`)
 	b.WriteString(`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`)
 	b.WriteString(`<title>Certificate</title><style>`)
-	b.WriteString(`*{box-sizing:border-box}body{margin:0;background:#fff;color:#222;font-family:` + lk.font + `}`)
+	b.WriteString(`@page{size:` + pageSize + `;margin:0}*{box-sizing:border-box}html,body{width:` + w + `;height:` + h + `}body{margin:0;background:#fff;color:#222;font-family:` + lk.font + `}`)
 	b.WriteString(`.page{position:relative;width:` + w + `;height:` + h + `;padding:16mm;text-align:center;`)
 	switch c.Preset {
 	case "modern":
@@ -88,7 +90,8 @@ func Render(c Config, d RenderData, preview bool) string {
 	b.WriteString(`}.title{margin:14mm 0 8mm;font-size:30pt;letter-spacing:1px;color:` + c.AccentColor + `;text-transform:` + lk.titleCase + `}`)
 	b.WriteString(`.body{font-size:15pt;line-height:1.7}.meta{margin-top:10mm;font-size:11pt;color:#555}`)
 	b.WriteString(`.sign{position:absolute;left:16mm;bottom:16mm;text-align:left;font-size:11pt}.sign .line{width:60mm;border-top:1px solid #333;margin-bottom:2mm}`)
-	b.WriteString(`.qr{position:absolute;right:16mm;bottom:16mm;width:24mm;height:24mm;border:1px dashed #999;font:9pt Arial,sans-serif;color:#777;display:flex;align-items:center;justify-content:center}`)
+	b.WriteString(`.qr{position:absolute;right:16mm;bottom:16mm;width:26mm;height:26mm;border:1px dashed #999;font:9pt Arial,sans-serif;color:#777;display:flex;align-items:center;justify-content:center}`)
+	b.WriteString(`.qr.real{border:none}.qr svg{width:100%;height:100%;display:block}`)
 	b.WriteString(`.foot{position:absolute;left:0;right:0;bottom:6mm;font-size:9pt;color:#777}.prev{position:absolute;top:4mm;right:6mm;font:9pt Arial,sans-serif;color:#999}`)
 	b.WriteString(`</style></head><body><div class="page">`)
 	if preview {
@@ -119,8 +122,13 @@ func Render(c Config, d RenderData, preview bool) string {
 		}
 		b.WriteString(`</div>`)
 	}
-	if c.ShowQR && preview {
-		b.WriteString(`<div class="qr">QR code</div>`)
+	if c.ShowQR {
+		switch {
+		case d.QRSVG != "":
+			b.WriteString(`<div class="qr real">` + d.QRSVG + `</div>`)
+		case preview:
+			b.WriteString(`<div class="qr">QR code</div>`)
+		}
 	}
 	if c.Footer != "" {
 		b.WriteString(`<div class="foot">` + html.EscapeString(c.Footer) + `</div>`)

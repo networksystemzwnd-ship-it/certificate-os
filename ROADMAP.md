@@ -6,7 +6,7 @@
 | M1 Identity and tenancy | In progress (COS-007, COS-008 built and in review; exit gate needs your Postgres/frontend run) |
 | M2 Institute onboarding and operations | In progress (COS-009/010 built; needs your Postgres/frontend verification; COS-011 document upload deferred; COS-RLS gate built, see M3) |
 | M3 Institute records | In progress (COS-RLS, M3a courses/batches/students/enrollments and M3b CSV import and M3c staff invitations built; needs your verification; XLSX import still to do) |
-| M4 Templates and issuance | In progress (M4a templates, versions and preview built; needs your verification; PDF rendering, certificate numbers, QR, issuance and bulk jobs still to do) |
+| M4 Templates and issuance | In progress (M4a templates and M4b single issuing (numbers, PDF, QR, download, revoke) built; needs your verification; bulk jobs, logo/signature images and the Docker/Chromium image still to do) |
 | M5 Verification and delivery | Not started |
 | M6 Pilot readiness | Not started |
 | M7 Post-MVP | Not started |

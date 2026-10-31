@@ -23,6 +23,11 @@ type Config struct {
 	WebOrigin      string        // the single allowed browser origin (CORS/CSRF), e.g. http://localhost:5173
 	SessionTTL     time.Duration // absolute session lifetime
 	CookieSecure   bool          // derived: true in production
+
+	PublicBaseURL    string // origin used in certificate QR codes (verification links); defaults to WebOrigin
+	PDFChromePath    string // absolute path of a pinned headless Chromium; empty disables certificate issuing
+	PDFNoSandbox     bool   // pass --no-sandbox to Chromium (only for containers running as root)
+	PDFMaxConcurrent int    // simultaneous PDF renders
 }
 
 // Load reads configuration using the provided lookup function (os.LookupEnv in production).
@@ -65,6 +70,27 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	} else if cfg.Env == "production" && u.Scheme != "https" {
 		errs = append(errs, errors.New("WEB_ORIGIN must use https in production"))
 	}
+
+	cfg.PublicBaseURL = strings.TrimRight(get("PUBLIC_BASE_URL", cfg.WebOrigin), "/")
+	if u, err := url.Parse(cfg.PublicBaseURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" {
+		errs = append(errs, errors.New("PUBLIC_BASE_URL must be an origin like https://certs.example.com (scheme and host only)"))
+	} else if cfg.Env == "production" && u.Scheme != "https" {
+		errs = append(errs, errors.New("PUBLIC_BASE_URL must use https in production (it is printed in certificate QR codes)"))
+	}
+	cfg.PDFChromePath = get("PDF_CHROME_PATH", "")
+	if cfg.PDFChromePath != "" && !strings.HasPrefix(cfg.PDFChromePath, "/") {
+		errs = append(errs, errors.New("PDF_CHROME_PATH must be an absolute path"))
+	}
+	noSandbox, err := strconv.ParseBool(get("PDF_CHROME_NO_SANDBOX", "false"))
+	if err != nil {
+		errs = append(errs, errors.New("PDF_CHROME_NO_SANDBOX must be a boolean"))
+	}
+	cfg.PDFNoSandbox = noSandbox
+	conc, err := strconv.Atoi(get("PDF_MAX_CONCURRENT", "2"))
+	if err != nil || conc < 1 || conc > 16 {
+		errs = append(errs, errors.New("PDF_MAX_CONCURRENT must be an integer between 1 and 16"))
+	}
+	cfg.PDFMaxConcurrent = conc
 
 	hours, err := strconv.Atoi(get("SESSION_TTL_HOURS", "12"))
 	if err != nil || hours < 1 || hours > 24*30 {

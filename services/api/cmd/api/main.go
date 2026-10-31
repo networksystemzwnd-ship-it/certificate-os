@@ -28,8 +28,11 @@ import (
 	"github.com/certificate-os/api/internal/auth"
 	"github.com/certificate-os/api/internal/auth/authhttp"
 	"github.com/certificate-os/api/internal/auth/pgstore"
+	"github.com/certificate-os/api/internal/certificates"
+	certspg "github.com/certificate-os/api/internal/certificates/pgstore"
 	"github.com/certificate-os/api/internal/imports"
 	importspg "github.com/certificate-os/api/internal/imports/pgstore"
+	"github.com/certificate-os/api/internal/pdf"
 	"github.com/certificate-os/api/internal/platform/config"
 	"github.com/certificate-os/api/internal/platform/health"
 	"github.com/certificate-os/api/internal/platform/httpx"
@@ -166,6 +169,18 @@ func run(args []string) error {
 	(&records.Handler{Svc: recordsSvc, Log: log, Tenancy: tenantH}).Register(mux)
 	(&imports.Handler{Svc: imports.NewService(importspg.New(pool), recordsSvc), Log: log, Tenancy: tenantH}).Register(mux)
 	(&templates.Handler{Svc: templates.NewService(templatespg.New(pool)), Log: log, Tenancy: tenantH}).Register(mux)
+	var renderer pdf.Renderer = pdf.Unavailable{}
+	if cfg.PDFChromePath != "" {
+		chrome, err := pdf.NewChromium(cfg.PDFChromePath, cfg.PDFNoSandbox, cfg.PDFMaxConcurrent)
+		if err != nil {
+			return fmt.Errorf("pdf renderer: %w", err)
+		}
+		renderer = chrome
+		log.Info("certificate pdf rendering enabled", "browser", cfg.PDFChromePath, "sandbox", !cfg.PDFNoSandbox)
+	} else {
+		log.Warn("certificate pdf rendering is disabled (PDF_CHROME_PATH not set): issuing returns 503 until it is configured")
+	}
+	(&certificates.Handler{Svc: certificates.NewService(certspg.New(pool), renderer, cfg.PublicBaseURL), Log: log, Tenancy: tenantH}).Register(mux)
 	staffStore := staffpg.New(pool)
 	staff.NewHandler(staff.NewService(staffStore, staffStore), log, tenantH).Register(mux)
 	(&tenancy.OpsHandler{Svc: &tenancy.OpsService{Store: tenantStore}, Log: log, Authn: authH.Authenticate}).Register(mux)

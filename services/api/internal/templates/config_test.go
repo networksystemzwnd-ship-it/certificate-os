@@ -157,3 +157,33 @@ func TestRenderOptions(t *testing.T) {
 		t.Fatal("landscape size")
 	}
 }
+
+func TestRenderEmbedsOnlyTheTrustedQRAndSetsPageSize(t *testing.T) {
+	c := valid()
+	c.ShowQR = true
+	d := SampleData
+	d.QRSVG = `<svg id="trusted"></svg>`
+	out := Render(c, d, false)
+	if !strings.Contains(out, `<div class="qr real"><svg id="trusted"></svg></div>`) || strings.Contains(out, "QR code") {
+		t.Fatalf("qr not embedded:\n%s", out)
+	}
+	if !strings.Contains(out, "@page{size:A4 landscape;margin:0}") {
+		t.Fatal("missing @page size")
+	}
+	c.Orientation = "portrait"
+	if !strings.Contains(Render(c, d, false), "@page{size:A4 portrait;margin:0}") {
+		t.Fatal("portrait @page")
+	}
+	// QR hidden when the template does not show it, even if an SVG is supplied.
+	c.ShowQR = false
+	if strings.Contains(Render(c, d, false), "trusted") {
+		t.Fatal("qr shown although disabled")
+	}
+	// A user-controlled value can never become the QR markup.
+	c.ShowQR = true
+	d2 := SampleData
+	d2.StudentName = `<svg id="evil"></svg>`
+	if strings.Contains(Render(c, d2, true), `<svg id="evil">`) {
+		t.Fatal("user value rendered as markup")
+	}
+}
