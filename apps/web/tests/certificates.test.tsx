@@ -85,7 +85,6 @@ it('downloads the PDF through the API client and revokes with a reason', async (
   const created = vi.fn(() => 'blob:x');
   Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() });
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-  vi.spyOn(window, 'prompt').mockReturnValue('Wrong name');
   const user = userEvent.setup();
   render(<CertificatesPage canIssue={false} canRevoke />);
   await user.click(await screen.findByRole('button', { name: 'Download CERT-2026-000001' }));
@@ -93,6 +92,8 @@ it('downloads the PDF through the API client and revokes with a reason', async (
   expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/api/v1/certificates/c-1/pdf'))).toBe(true);
 
   await user.click(screen.getByRole('button', { name: 'Revoke CERT-2026-000001' }));
+  await user.type(screen.getByLabelText(/Reason/), 'Wrong name');
+  await user.click(screen.getByRole('button', { name: 'Confirm revoke' }));
   expect(await screen.findByText(/Revoked — Wrong name/)).toBeInTheDocument();
 });
 
@@ -111,10 +112,11 @@ it('replaces an issued certificate with a reason, only for members who can issue
       return { status: 201, body: { certificate: cert({ id: 'c-2', certificate_number: 'CERT-2026-000002' }) } };
     },
   });
-  vi.spyOn(window, 'prompt').mockReturnValue('Name fixed');
   const user = userEvent.setup();
   const { unmount } = render(<CertificatesPage canIssue canRevoke />);
   await user.click(await screen.findByRole('button', { name: 'Replace CERT-2026-000001' }));
+  await user.type(screen.getByLabelText(/Reason/), 'Name fixed');
+  await user.click(screen.getByRole('button', { name: 'Confirm replace' }));
   expect(await screen.findByText(/Replaced — Name fixed/)).toBeInTheDocument();
   expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith('/c-1/replace') && i?.method === 'POST')).toBe(true);
   unmount();

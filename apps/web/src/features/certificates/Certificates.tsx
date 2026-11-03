@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { ReasonForm } from '../../components/ReasonForm';
 import { ApiError } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
 import { EmptyState, ErrorState, Loading } from '../../components/States';
@@ -64,11 +65,13 @@ function IssuePanel({ onIssued }: { onIssued: (c: Certificate) => void }) {
   const completed = student?.enrollments?.filter((x) => x.status === 'completed') ?? [];
   const tpl = templates.state.status === 'success' ? templates.state.data.templates : [];
   return (
-    <section aria-labelledby="issue-h">
+    <section aria-labelledby="issue-h" className="panel stack">
       <h4 id="issue-h">Issue a certificate</h4>
-      <form onSubmit={search} aria-label="Find student">
-        <label htmlFor="cert-student-q">Find a student</label>{' '}
-        <input id="cert-student-q" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Name, number or email" />{' '}
+      <form onSubmit={search} aria-label="Find student" className="filters">
+        <div className="filter grow">
+          <label htmlFor="cert-student-q">Find a student</label>
+          <input id="cert-student-q" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Name, number or email" />
+        </div>
         <button type="submit">Search</button>
       </form>
       {students && students.length === 0 && <p>No students found.</p>}
@@ -116,6 +119,7 @@ function IssuePanel({ onIssued }: { onIssued: (c: Certificate) => void }) {
 
 function Row({ cert, canRevoke, canReplace, canEmail, onEmailed, onChanged }: { cert: Certificate; canRevoke: boolean; canReplace: boolean; canEmail: boolean; onEmailed: (c: Certificate) => void; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState<'revoke' | 'replace' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const download = async () => {
     setBusy(true);
@@ -136,13 +140,12 @@ function Row({ cert, canRevoke, canReplace, canEmail, onEmailed, onChanged }: { 
       setBusy(false);
     }
   };
-  const revoke = async () => {
-    const reason = window.prompt(`Why is ${cert.certificate_number} being revoked? (shown to your team, 3–500 characters)`);
-    if (reason === null) return;
+  const revoke = async (reason: string) => {
     setBusy(true);
     setError(null);
     try {
       await certificatesApi.revoke(cert.id, reason);
+      setAsking(null);
       onChanged();
     } catch (e) {
       setError(message(e));
@@ -150,13 +153,12 @@ function Row({ cert, canRevoke, canReplace, canEmail, onEmailed, onChanged }: { 
       setBusy(false);
     }
   };
-  const replace = async () => {
-    const reason = window.prompt(`What is being corrected on ${cert.certificate_number}? A new certificate will be issued and this one marked as replaced. (3–500 characters)`);
-    if (reason === null) return;
+  const replace = async (reason: string) => {
     setBusy(true);
     setError(null);
     try {
       await certificatesApi.replace(cert.id, reason);
+      setAsking(null);
       onChanged();
     } catch (e) {
       setError(message(e));
@@ -179,15 +181,17 @@ function Row({ cert, canRevoke, canReplace, canEmail, onEmailed, onChanged }: { 
   const hasPdf = cert.status === 'issued' || cert.status === 'revoked';
   return (
     <tr>
-      <td>{cert.certificate_number}</td>
+      <td className="mono">{cert.certificate_number}</td>
       <td>{cert.student_name}</td>
       <td>{cert.course_name}</td>
       <td>{cert.status === 'revoked' && cert.replaced_by_id ? 'Replaced' : STATUS_LABEL[cert.status]}{cert.status === 'revoked' && cert.revoke_reason ? ` — ${cert.revoke_reason}` : ''}{cert.status === 'failed' ? ' — not issued' : ''}</td>
-      <td>
-        {hasPdf && <button type="button" disabled={busy} onClick={download}>Download {cert.certificate_number}</button>}{' '}
-        {canRevoke && cert.status === 'issued' && <button type="button" disabled={busy} onClick={revoke}>Revoke {cert.certificate_number}</button>}{' '}
-        {canEmail && cert.status === 'issued' && <button type="button" disabled={busy} onClick={email}>Email {cert.certificate_number}</button>}{' '}
-        {canReplace && cert.status === 'issued' && <button type="button" disabled={busy} onClick={replace}>Replace {cert.certificate_number}</button>}
+      <td className="actions">
+        {hasPdf && <button aria-label={`Download ${cert.certificate_number}`} type="button" disabled={busy} onClick={download}>Download</button>}{' '}
+        {canRevoke && cert.status === 'issued' && <button aria-label={`Revoke ${cert.certificate_number}`} type="button" disabled={busy} onClick={() => setAsking('revoke')}>Revoke</button>}{' '}
+        {canEmail && cert.status === 'issued' && <button aria-label={`Email ${cert.certificate_number}`} type="button" disabled={busy} onClick={email}>Email</button>}{' '}
+        {canReplace && cert.status === 'issued' && <button aria-label={`Replace ${cert.certificate_number}`} type="button" disabled={busy} onClick={() => setAsking('replace')}>Replace</button>}
+        {asking === 'revoke' && <ReasonForm title={`Revoke ${cert.certificate_number}?`} consequence="Anyone verifying this certificate will see it as revoked. This cannot be undone." confirmLabel="Confirm revoke" busy={busy} onConfirm={revoke} onCancel={() => setAsking(null)} />}
+        {asking === 'replace' && <ReasonForm title={`Replace ${cert.certificate_number}?`} consequence="A new certificate is issued with the current details and this one is marked as replaced." confirmLabel="Confirm replace" busy={busy} onConfirm={replace} onCancel={() => setAsking(null)} />}
         {error && <span role="alert"> {error}</span>}
       </td>
     </tr>
@@ -212,13 +216,17 @@ export function CertificatesPage({ canIssue, canRevoke, canExport = false, canDe
       {canIssue && <IssuePanel onIssued={(c) => { setNotice(`Issued ${c.certificate_number} for ${c.student_name}.`); list.retry(); }} />}
       {canIssue && <BulkPanel canExport={canExport} canEmail={canDeliver && emailEnabled} onEmailed={() => setDeliveryTick((n) => n + 1)} onChanged={list.retry} />}
       {notice && <p role="status">{notice}</p>}
-      <form onSubmit={(e) => { e.preventDefault(); setApplied(q); }} aria-label="Filter certificates">
-        <label htmlFor="cert-q">Search</label>{' '}
-        <input id="cert-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number or student name" />{' '}
-        <label htmlFor="cert-status">Status</label>{' '}
-        <select id="cert-status" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All</option><option value="issued">Issued</option><option value="revoked">Revoked</option><option value="failed">Failed</option>
-        </select>{' '}
+      <form onSubmit={(e) => { e.preventDefault(); setApplied(q); }} aria-label="Filter certificates" className="filters">
+        <div className="filter grow">
+          <label htmlFor="cert-q">Search</label>
+          <input id="cert-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Number or student name" />
+        </div>
+        <div className="filter">
+          <label htmlFor="cert-status">Status</label>
+          <select id="cert-status" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">All</option><option value="issued">Issued</option><option value="revoked">Revoked</option><option value="failed">Failed</option>
+          </select>
+        </div>
         <button type="submit">Search</button>
       </form>
       {list.state.status === 'loading' && <Loading />}

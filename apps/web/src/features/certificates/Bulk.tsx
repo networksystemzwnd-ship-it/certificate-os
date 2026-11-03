@@ -142,7 +142,7 @@ function JobView({ job, canExport, canEmail, onEmailed, reload, onChanged }: { j
 export function BulkPanel({ canExport, canEmail = false, onEmailed = () => {}, onChanged, pollMs = 2000 }: { canExport: boolean; canEmail?: boolean; onEmailed?: () => void; onChanged: () => void; pollMs?: number }) {
   const [open, setOpen] = useState(false);
   return (
-    <section aria-labelledby="bulk-h">
+    <section aria-labelledby="bulk-h" className="panel stack">
       <h4 id="bulk-h">Issue a whole batch</h4>
       {!open ? (
         <button type="button" onClick={() => setOpen(true)}>Issue for a batch…</button>

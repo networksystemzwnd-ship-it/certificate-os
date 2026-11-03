@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, ApiError, setActiveInstitute } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
-import { EmptyState, ErrorState, Loading } from '../../components/States';
+import { Badge } from '../../components/Badge';
+import { EmptyState, ErrorState, Loading, Notice } from '../../components/States';
 import { BatchesPage, CoursesPage, StudentsPage } from '../records/Records';
 import { ImportWizard } from '../records/ImportWizard';
 import { StaffPage } from '../staff/Staff';
@@ -23,7 +24,7 @@ interface InstituteDetail extends InstituteSummary {
   permissions?: string[];
 }
 
-type Tab = 'overview' | 'students' | 'courses' | 'batches' | 'templates' | 'certificates' | 'import' | 'staff';
+export type Tab = 'overview' | 'students' | 'courses' | 'batches' | 'templates' | 'certificates' | 'import' | 'staff';
 
 function Detail({ id }: { id: string }) {
   const { user } = useSession();
@@ -45,34 +46,70 @@ function Detail({ id }: { id: string }) {
   }
   const inst = state.data.institute;
   const can = (p: string) => inst.permissions?.includes(p) ?? false;
-  const tabs: Tab[] = ['overview', 'students', 'courses', 'batches', ...(can('templates.read') ? (['templates'] as Tab[]) : []), ...(can('certificates.read') ? (['certificates'] as Tab[]) : []), ...(can('students.import') ? (['import'] as Tab[]) : []), ...(can('staff.manage') ? (['staff'] as Tab[]) : [])];
+  // Grouped by the job a person is doing, not by database table. Labels stay stable: tests and muscle memory use them.
+  const groups: { title: string; items: { tab: Tab; label: string; show: boolean }[] }[] = [
+    { title: '', items: [{ tab: 'overview', label: 'Overview', show: true }] },
+    {
+      title: 'Records',
+      items: [
+        { tab: 'students', label: 'Students', show: true },
+        { tab: 'courses', label: 'Courses', show: true },
+        { tab: 'batches', label: 'Batches', show: true },
+        { tab: 'import', label: 'Import students', show: can('students.import') },
+      ],
+    },
+    {
+      title: 'Certificates',
+      items: [
+        { tab: 'templates', label: 'Templates', show: can('templates.read') },
+        { tab: 'certificates', label: 'Certificates', show: can('certificates.read') },
+      ],
+    },
+    { title: 'Team', items: [{ tab: 'staff', label: 'Staff', show: can('staff.manage') }] },
+  ];
   return (
     <section aria-labelledby="inst-name">
-      <h2 id="inst-name">{inst.name}</h2>
-      <p>
-        Your role: <strong>{inst.role}</strong>
-      </p>
+      <div className="ws-head">
+        <h1 id="inst-name">{inst.name}</h1>
+        <div className="meta">
+          <Badge tone="info">{inst.role}</Badge>
+          <span>Your role in this institute</span>
+        </div>
+      </div>
       {inst.status !== 'active' && (
-        <p role="status">
-          This institute is <strong>{inst.status}</strong>. Access is read-only.
-        </p>
+        <Notice tone="warn">
+          This institute is <strong>{inst.status}</strong>. Access is read-only: you can look at records, but not change or export them.
+        </Notice>
       )}
-      <nav aria-label="Institute sections">
-        {tabs.map((t) => (
-          <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)}>
-            {t === 'import' ? 'Import students' : t[0].toUpperCase() + t.slice(1)}
-          </button>
-        ))}
-      </nav>
-      {/* Write actions are shown only when the server granted the capability; the API enforces it regardless. */}
-      {tab === 'overview' && <Overview />}
-      {tab === 'students' && <StudentsPage canWrite={can('students.write')} canExport={can('students.export')} />}
-      {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
-      {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
-      {tab === 'templates' && can('templates.read') && <TemplatesPage canWrite={can('templates.write')} />}
-      {tab === 'certificates' && can('certificates.read') && <CertificatesPage canIssue={can('certificates.issue')} canRevoke={can('certificates.revoke')} canExport={can('certificates.export')} canDeliver={can('certificates.deliver')} />}
-      {tab === 'import' && can('students.import') && <ImportWizard />}
-      {tab === 'staff' && can('staff.manage') && <StaffPage selfEmail={user?.email} />}
+      <div className="ws">
+        <nav aria-label="Institute sections" className="sidenav">
+          {groups.map((g) => {
+            const items = g.items.filter((i) => i.show);
+            if (items.length === 0) return null;
+            return (
+              <div key={g.title || 'main'} style={{ display: 'contents' }}>
+                {g.title && <span className="group">{g.title}</span>}
+                {items.map((i) => (
+                  <button key={i.tab} type="button" aria-pressed={tab === i.tab} onClick={() => setTab(i.tab)}>
+                    {i.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </nav>
+        <div className="ws-body">
+          {/* Write actions are shown only when the server granted the capability; the API enforces it regardless. */}
+          {tab === 'overview' && <Overview go={(t) => setTab(t)} allowed={groups.flatMap((g) => g.items.filter((i) => i.show).map((i) => i.tab))} />}
+          {tab === 'students' && <StudentsPage canWrite={can('students.write')} canExport={can('students.export')} />}
+          {tab === 'courses' && <CoursesPage canWrite={can('courses.write')} />}
+          {tab === 'batches' && <BatchesPage canWrite={can('courses.write')} />}
+          {tab === 'templates' && can('templates.read') && <TemplatesPage canWrite={can('templates.write')} />}
+          {tab === 'certificates' && can('certificates.read') && <CertificatesPage canIssue={can('certificates.issue')} canRevoke={can('certificates.revoke')} canExport={can('certificates.export')} canDeliver={can('certificates.deliver')} />}
+          {tab === 'import' && can('students.import') && <ImportWizard />}
+          {tab === 'staff' && can('staff.manage') && <StaffPage selfEmail={user?.email} />}
+        </div>
+      </div>
     </section>
   );
 }
@@ -88,20 +125,18 @@ export function WorkspaceView() {
 
   return (
     <section>
-      <h1>Institute workspace</h1>
+      {!selected && <h1>Institute workspace</h1>}
       {state.status === 'loading' && <Loading label="Loading your institutes…" />}
       {state.status === 'error' && <ErrorState message={state.error.message} onRetry={retry} />}
       {state.status === 'success' && institutes.length === 0 && (
-        <EmptyState title="No institute access">
-          <p>Your account is not a member of any institute yet. Ask an institute owner to add you, or{' '}
-            <Link to="/apply">apply to register your own institute</Link>.
-          </p>
+        <EmptyState title="No institute access" action={<Link to="/apply" className="button primary">Register an institute</Link>}>
+          <p>Your account is not a member of any institute yet. Ask an institute owner to invite you, or register your own institute.</p>
+          <p className="muted">Registration is reviewed by our team before your institute goes live.</p>
         </EmptyState>
       )}
       {institutes.length > 1 && (
-        <p>
+        <div className="toolbar">
           <label htmlFor="institute">Institute</label>
-          <br />
           <select id="institute" value={selected ?? ''} onChange={(e) => setSelected(e.target.value || null)}>
             <option value="">Choose an institute…</option>
             {institutes.map((i) => (
@@ -110,7 +145,7 @@ export function WorkspaceView() {
               </option>
             ))}
           </select>
-        </p>
+        </div>
       )}
       {selected && <Detail id={selected} />}
     </section>

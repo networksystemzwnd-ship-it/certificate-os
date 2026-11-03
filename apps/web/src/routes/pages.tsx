@@ -1,6 +1,7 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
+import { Badge } from '../components/Badge';
 import { EmptyState, ErrorState, Loading } from '../components/States';
 import { AuthForm } from '../features/auth/AuthForm';
 import { ApplyPage } from '../features/applications/ApplyPage';
@@ -14,13 +15,30 @@ import { WorkspaceView } from '../features/institute/Workspace';
 
 export function Home() {
   const ready = useAsync(() => api<{ status: string }>('/readyz'), []);
+  const { status, user } = useSession();
   return (
     <section>
-      <h1>CertificateOS</h1>
-      <p>Secure certificate management and public verification for institutes.</p>
-      <h2>API status</h2>
-      {ready.state.status === 'loading' && <Loading label="Checking API…" />}
-      {ready.state.status === 'success' && <p>API is ready.</p>}
+      <div className="hero">
+        <h1>Certificates your students can prove</h1>
+        <p>
+          CertificateOS helps training institutes issue, send and verify certificates. Every certificate carries a QR code:
+          anyone who scans it sees at once whether the certificate is genuine.
+        </p>
+        <div className="actions">
+          {user ? (
+            <Link to="/app" className="button primary">Open your workspace</Link>
+          ) : status === 'anonymous' ? (
+            <>
+              <Link to="/login" className="button primary">Log in</Link>
+              <Link to="/register" className="button">Create an account</Link>
+            </>
+          ) : null}
+        </div>
+      </div>
+      <div className="sysline">
+        {ready.state.status === 'loading' && <Loading label="Checking API…" />}
+        {ready.state.status === 'success' && <><Badge tone="ok">System ready</Badge><p>API is ready.</p></>}
+      </div>
       {ready.state.status === 'error' && (
         <ErrorState
           message={ready.state.error.message}
@@ -51,7 +69,12 @@ function OperationsHome() {
   const can = (p: string) => user?.permissions.includes(p) ?? false;
   return (
     <section>
-      <h1>Operations</h1>
+      <div className="page-head">
+        <div>
+          <h1>Operations</h1>
+          <p>Review institute applications and keep an eye on the platform.</p>
+        </div>
+      </div>
       <nav aria-label="Operations">
         {can('ops.applications.read') && <NavLink to="/ops" end className="nav-link">Applications</NavLink>}
         {can('ops.applications.read') && <NavLink to="/ops/overview" className="nav-link">Overview</NavLink>}
@@ -77,7 +100,7 @@ export const Operations = () => (
   </RequireSession>
 );
 export const NotFoundPage = () => (
-  <EmptyState title="Page not found">
-    <p>The page you requested does not exist.</p>
+  <EmptyState title="Page not found" action={<Link to="/" className="button">Go to the home page</Link>}>
+    <p>The page you requested does not exist. Check the address, or go back to the home page.</p>
   </EmptyState>
 );

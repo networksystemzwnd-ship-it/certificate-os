@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { ApiError } from '../../lib/api';
 import { useAsync } from '../../lib/useAsync';
+import { Disclosure } from '../../components/Disclosure';
 import { EmptyState, ErrorState, Loading } from '../../components/States';
 import { fieldErrors } from '../auth/session';
 import { batchesApi, coursesApi, studentsApi, type Batch, type Course, type Enrollment, type Student } from './api';
@@ -42,18 +43,18 @@ function FormError({ error }: { error: Error | null }) {
   return <p role="alert">{error.message}{error instanceof ApiError && error.requestId ? ` (reference: ${error.requestId})` : ''}</p>;
 }
 
-function Listing<T>({ state, retry, empty, children }: {
-  state: ReturnType<typeof useAsync<T[]>>['state']; retry: () => void; empty: string; children: (items: T[]) => ReactNode;
+function Listing<T>({ state, retry, empty, hint, children }: {
+  state: ReturnType<typeof useAsync<T[]>>['state']; retry: () => void; empty: string; hint?: string; children: (items: T[]) => ReactNode;
 }) {
   if (state.status === 'loading') return <Loading />;
   if (state.status === 'error') return <ErrorState message={state.error.message} requestId={state.error instanceof ApiError ? state.error.requestId : undefined} onRetry={retry} />;
-  if (state.data.length === 0) return <EmptyState title={empty} />;
+  if (state.data.length === 0) return <EmptyState title={empty}>{hint && <p>{hint}</p>}</EmptyState>;
   return <>{children(state.data)}</>;
 }
 
 function ArchiveFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <label>
+    <label className="check">
       <input type="checkbox" style={{ minWidth: 0 }} checked={value === 'only'} onChange={(e) => onChange(e.target.checked ? 'only' : '')} /> Show archived
     </label>
   );
@@ -95,10 +96,10 @@ export function CoursesPage({ canWrite }: { canWrite: boolean }) {
   return (
     <section aria-labelledby="courses-h">
       <h2 id="courses-h">Courses</h2>
-      {canWrite && <CourseForm onSaved={list.retry} />}
-      <p><label htmlFor="cq">Search</label> <input id="cq" value={q} onChange={(e) => setQ(e.target.value)} /> <ArchiveFilter value={archived} onChange={setArchived} /></p>
+      {canWrite && <Disclosure title="New course"><CourseForm onSaved={list.retry} /></Disclosure>}
+      <div className="filters"><div className="filter"><label htmlFor="cq">Search</label><input id="cq" value={q} onChange={(e) => setQ(e.target.value)} /></div><ArchiveFilter value={archived} onChange={setArchived} /></div>
       <FormError error={m.error} />
-      <Listing state={list.state} retry={list.retry} empty="No courses yet">
+      <Listing state={list.state} retry={list.retry} empty="No courses yet" hint={canWrite ? 'Add the courses your institute teaches, for example “Advanced Welding”. Batches and certificates are built on them.' : undefined}>
         {(items) => (
           <table>
             <thead><tr><th scope="col">Name</th><th scope="col">Code</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
@@ -172,17 +173,19 @@ export function BatchesPage({ canWrite }: { canWrite: boolean }) {
   return (
     <section aria-labelledby="batches-h">
       <h2 id="batches-h">Batches</h2>
-      {canWrite && <BatchForm courses={cs} onSaved={list.retry} />}
-      <p>
-        <label htmlFor="bf">Course</label>{' '}
-        <select id="bf" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
-          <option value="">All courses</option>
-          {cs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>{' '}
+      {canWrite && <Disclosure title="New batch"><BatchForm courses={cs} onSaved={list.retry} /></Disclosure>}
+      <div className="filters">
+        <div className="filter">
+          <label htmlFor="bf">Course</label>
+          <select id="bf" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
+            <option value="">All courses</option>
+            {cs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
         <ArchiveFilter value={archived} onChange={setArchived} />
-      </p>
+      </div>
       <FormError error={m.error} />
-      <Listing state={list.state} retry={list.retry} empty="No batches yet">
+      <Listing state={list.state} retry={list.retry} empty="No batches yet" hint={canWrite ? 'A batch is one group of students taking a course together. Create a course first, then add a batch for it.' : undefined}>
         {(items) => (
           <table>
             <thead><tr><th scope="col">Batch</th><th scope="col">Course</th><th scope="col">Dates</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
@@ -319,21 +322,29 @@ export function StudentsPage({ canWrite, canExport = false }: { canWrite: boolea
   return (
     <section aria-labelledby="students-h">
       <h2 id="students-h">Students</h2>
-      {canWrite && <StudentForm onSaved={list.retry} />}
-      <form role="search" onSubmit={(e) => { e.preventDefault(); setOffset(0); setTerm(q.trim()); }}>
-        <label htmlFor="sq">Search name, email or number</label> <input id="sq" value={q} onChange={(e) => setQ(e.target.value)} /> <button type="submit">Search</button>{' '}
-        <label htmlFor="sc">Course</label>{' '}
-        <select id="sc" value={courseId} onChange={(e) => reset(setCourseId)(e.target.value)}>
-          <option value="">All</option>{cs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>{' '}
-        <label htmlFor="ss">Status</label>{' '}
-        <select id="ss" value={status} onChange={(e) => reset(setStatus)(e.target.value)}>
-          <option value="">Any</option><option value="enrolled">Enrolled</option><option value="completed">Completed</option><option value="withdrawn">Withdrawn</option>
-        </select>{' '}
+      {canWrite && <Disclosure title="New student"><StudentForm onSaved={list.retry} /></Disclosure>}
+      <form role="search" className="filters" onSubmit={(e) => { e.preventDefault(); setOffset(0); setTerm(q.trim()); }}>
+        <div className="filter grow">
+          <label htmlFor="sq">Search name, email or number</label>
+          <input id="sq" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <div className="filter">
+          <label htmlFor="sc">Course</label>
+          <select id="sc" value={courseId} onChange={(e) => reset(setCourseId)(e.target.value)}>
+            <option value="">All</option>{cs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div className="filter">
+          <label htmlFor="ss">Status</label>
+          <select id="ss" value={status} onChange={(e) => reset(setStatus)(e.target.value)}>
+            <option value="">Any</option><option value="enrolled">Enrolled</option><option value="completed">Completed</option><option value="withdrawn">Withdrawn</option>
+          </select>
+        </div>
         <ArchiveFilter value={archived} onChange={reset(setArchived)} />
+        <button type="submit">Search</button>
       </form>
       {canExport && (
-        <p>
+        <p className="export-row">
           <button type="button" disabled={m.busy} onClick={() => m.run(async () => {
             const blob = await studentsApi.exportCsv({ q: term, course_id: courseId, status, archived });
             const url = URL.createObjectURL(blob);
@@ -353,7 +364,7 @@ export function StudentsPage({ canWrite, canExport = false }: { canWrite: boolea
       {list.state.status === 'loading' && <Loading />}
       {list.state.status === 'error' && <ErrorState message={list.state.error.message} requestId={list.state.error instanceof ApiError ? list.state.error.requestId : undefined} onRetry={list.retry} />}
       {list.state.status === 'success' && (list.state.data.students.length === 0
-        ? <EmptyState title="No students found" />
+        ? <EmptyState title="No students found">{canWrite && !term && !courseId && !status && archived !== 'only' ? <p>Add a student with “New student”, or import many at once from the Import tab.</p> : <p>Try a different search or clear the filters.</p>}</EmptyState>
         : (
           <>
             <table>

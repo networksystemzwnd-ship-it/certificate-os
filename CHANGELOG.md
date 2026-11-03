@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- UX redesign, slice 1 (D-183): new design system with dark mode, app shell and grouped sidebar, Overview getting-started and attention notice, friendlier empty/error states, collapsible create forms, grouped filters, inline confirmation (with reason) for revoke/replace instead of a browser prompt, card-style public verification page, mobile layout. Frontend only; no API, migration or dependency change. Frontend tests, lint and build were not run by me; a rendered preview was checked in desktop, mobile and dark.
 - Shared rate limits: `RATE_LIMIT_STORE=postgres` makes login, registration and invitation limits hold across several API replicas (migration 0017; keys are hashed; fails open to the in-memory window if the counter is down). Default stays `memory`. No new dependencies.
 - Verification kit: `scripts/verify-all.sh` / `make verify` (migrations, restricted role, full Go suite against real PostgreSQL under row-level security, web install/typecheck/lint/tests/build) and `docs/verification-checklist.md` listing what only you can check. README brought up to date.
 - Session cleanup: expired or revoked login sessions are deleted a week after they die by an hourly job. Migration 0016 grants DELETE on `sessions` only. No new dependencies.

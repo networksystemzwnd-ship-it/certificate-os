@@ -31,8 +31,10 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
   }
 
   return (
-    <section>
+    <section className="auth">
       <h1>{isLogin ? 'Log in' : 'Create account'}</h1>
+      <p className="lede">{isLogin ? 'Welcome back. Log in to manage your institute’s certificates.' : 'Create your account first. You can register an institute or accept an invitation afterwards.'}</p>
+      <div className="panel">
       <form onSubmit={onSubmit} noValidate>
         <p>
           <label htmlFor="email">Email</label>
@@ -64,7 +66,7 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
           />
           {fields.password && <span id="password-error"> {fields.password}</span>}
         </p>
-        {!isLogin && <p>Use at least 12 characters.</p>}
+        {!isLogin && <p className="muted">Use at least 12 characters. A few random words make a strong password.</p>}
         {error && Object.keys(fields).length === 0 && (
           <ErrorState message={error.message} requestId={error instanceof ApiError ? error.requestId : undefined} />
         )}
@@ -72,7 +74,8 @@ export function AuthForm({ mode }: { mode: 'login' | 'register' }) {
           {busy ? 'Please wait…' : isLogin ? 'Log in' : 'Create account'}
         </button>
       </form>
-      <p>
+      </div>
+      <p style={{ marginTop: '1rem' }}>
         {isLogin ? (
           <>
             New here? <Link to="/register">Create an account</Link>
