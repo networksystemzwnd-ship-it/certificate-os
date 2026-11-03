@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -169,6 +170,38 @@ func run(args []string) error {
 	// Expired and revoked sessions are deleted a week after they die (D-181).
 	go authSvc.RunPurge(ctx, time.Hour, log)
 	authH := authhttp.NewHandler(authSvc, authhttp.CookieConfig{Secure: cfg.CookieSecure, TTL: cfg.SessionTTL}, log)
+	// Shared rate limits (D-182): optional, needed only when several API replicas run.
+	var useShared func(name string, l *auth.Limiter)
+	if cfg.RateLimitStore == "postgres" {
+		counter := pgstore.NewCounter(pool)
+		var warned atomic.Int64
+		useShared = func(name string, l *auth.Limiter) {
+			l.Use(name, counter, func(err error) {
+				if n := time.Now().Unix(); n-warned.Swap(n) > 60 { // at most one warning a minute
+					log.Warn("shared rate limiter unavailable; this replica counts on its own", "err", err)
+				}
+			})
+		}
+		go func() {
+			t := time.NewTicker(time.Hour)
+			defer t.Stop()
+			for {
+				if _, err := counter.DeleteOld(ctx); err != nil && ctx.Err() == nil {
+					log.Error("rate limit cleanup failed", "err", err)
+				}
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+				}
+			}
+		}()
+	} else {
+		useShared = func(string, *auth.Limiter) {}
+	}
+	useShared("register_ip", authH.RegisterByIP)
+	useShared("login_ip", authH.LoginByIP)
+	useShared("login_email", authH.LoginByEmail)
 	authH.Register(mux)
 	(&tenancy.Handler{Svc: &tenancy.Service{Store: tenancypg.New(pool)}, Log: log, Authn: authH.Authenticate}).Register(mux)
 	auditStore := auditpg.New(pool)
@@ -236,7 +269,10 @@ func run(args []string) error {
 	verifyH := verification.NewHandler(verification.NewService(verificationpg.New(pool, func(msg string, args ...any) { log.Warn(msg, args...) })), log)
 	verifyH.Register(mux)
 	staffStore := staffpg.New(pool)
-	staff.NewHandler(staff.NewService(staffStore, staffStore), log, tenantH).Register(mux)
+	staffH := staff.NewHandler(staff.NewService(staffStore, staffStore), log, tenantH)
+	useShared("invite_accept_user", staffH.AcceptByUser)
+	useShared("invite_accept_ip", staffH.AcceptByIP)
+	staffH.Register(mux)
 	(&tenancy.OpsHandler{Svc: &tenancy.OpsService{Store: tenantStore}, Log: log, Authn: authH.Authenticate}).Register(mux)
 	(&audit.Handler{Reader: auditStore, Log: log, Authn: authH.Authenticate}).Register(mux)
 	mux.HandleFunc("/", httpx.NotFound)

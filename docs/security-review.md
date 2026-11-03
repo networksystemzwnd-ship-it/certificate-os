@@ -67,7 +67,7 @@ Evidence legend: **T** = automated test, **S** = checked by hand on real Postgre
 
 ## 7. Open items (not done)
 1. **Dependency scanning** (Go modules, npm) is not set up; the build sandbox could not reach the registries. Add `govulncheck` and `npm audit` to CI.
-2. **Rate limiters are per process** (D-108): with several replicas the effective limit is multiplied; a shared limiter is needed before scaling out. Trusted-proxy handling exists (`TRUSTED_PROXIES`, D-180, tested); it must be set correctly for your proxy, and a wrong range would let clients pick their own key.
+2. **Rate limiters are per process by default** (D-108): with several replicas set `RATE_LIMIT_STORE=postgres` (D-182, auth/registration/invitations; unverified through real pgx). The public verification limit is per replica by design. Trusted-proxy handling exists (`TRUSTED_PROXIES`, D-180, tested); it must be set correctly for your proxy, and a wrong range would let clients pick their own key.
 3. **Document uploads** (COS-011) are not built. Import files (CSV/XLSX) are parsed, never stored as files, and have no malware scanning because nothing is executed or served back.
 4. **No real-provider email test**, no bounce handling.
 5. **No external penetration test** and no independent review of the RLS policies.

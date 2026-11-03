@@ -34,6 +34,9 @@ type Config struct {
 	// TrustedProxies are the reverse proxies (IPs or CIDR ranges) whose X-Forwarded-For header is believed when
 	// keying rate limits. Empty = the TCP peer is always used (correct only when clients connect directly).
 	TrustedProxies []netip.Prefix
+	// RateLimitStore is where login/registration/invitation limits are counted: memory (per process, default) or
+	// postgres (shared by every replica, D-182).
+	RateLimitStore string
 	// Email delivery (M5b). EmailProvider is "none" (sending disabled) or "smtp". SMTPPassword is a secret: never log it.
 	EmailProvider    string
 	EmailFrom        string // sender address, e.g. "Certificates <no-reply@example.com>"
@@ -113,6 +116,10 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		errs = append(errs, fmt.Errorf("TRUSTED_PROXIES: %w", err))
 	} else {
 		cfg.TrustedProxies = tp
+	}
+	cfg.RateLimitStore = get("RATE_LIMIT_STORE", "memory")
+	if cfg.RateLimitStore != "memory" && cfg.RateLimitStore != "postgres" {
+		errs = append(errs, fmt.Errorf("RATE_LIMIT_STORE must be memory or postgres (got %q)", cfg.RateLimitStore))
 	}
 	cfg.MetricsToken = get("METRICS_TOKEN", "")
 	if cfg.MetricsToken != "" && len(cfg.MetricsToken) < 16 {

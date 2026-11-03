@@ -172,6 +172,15 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
 - Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
 
+### Shared rate limits — Built (needs your verification)
+- Priority: P1 (needed only with more than one API replica)
+- Delivered: `auth.Counter` + `Limiter.Use`, `auth/pgstore.Counter` (migration 0017), `RATE_LIMIT_STORE` (D-182).
+- Acceptance:
+  - [x] two limiters sharing a counter enforce one limit; subjects are hashed and namespaced; counter failure falls back to the in-memory window and is reported (tests, mutation-checked)
+  - [x] the counting SQL runs as the restricted role on real PostgreSQL 16 (prepared with inferred parameter types, like pgx)
+  - [ ] `auth/pgstore` counter test through real pgx; two real replicas (see the verification checklist)
+- Not included: shared limiting of the public verification page, Redis.
+
 ### Session cleanup — Built (needs your verification)
 - Priority: P1
 - Delivered: migration 0016, `auth.Store.DeleteDeadSessions`, hourly job (D-181).

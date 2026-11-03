@@ -203,3 +203,17 @@ func TestTrustedProxies(t *testing.T) {
 		t.Fatal("garbage must be refused at startup")
 	}
 }
+
+func TestRateLimitStore(t *testing.T) {
+	cfg, err := Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x"}))
+	if err != nil || cfg.RateLimitStore != "memory" {
+		t.Fatalf("default must be memory: %+v %v", cfg.RateLimitStore, err)
+	}
+	cfg, err = Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x", "RATE_LIMIT_STORE": "postgres"}))
+	if err != nil || cfg.RateLimitStore != "postgres" {
+		t.Fatalf("%+v %v", cfg.RateLimitStore, err)
+	}
+	if _, err := Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x", "RATE_LIMIT_STORE": "redis"})); err == nil {
+		t.Fatal("unknown store must be refused")
+	}
+}

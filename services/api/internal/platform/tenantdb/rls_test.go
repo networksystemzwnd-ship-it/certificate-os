@@ -18,7 +18,7 @@ import (
 // append-only audit trail. Adding a table here is a security-review decision (ADR-001). Every other table
 // must carry institute_id and FORCE row-level security.
 var globalTables = map[string]bool{
-	"schema_migrations": true, "users": true, "sessions": true, "institutes": true,
+	"schema_migrations": true, "users": true, "sessions": true, "rate_limit_windows": true, "institutes": true,
 	"institute_memberships": true, "institute_applications": true, "audit_logs": true,
 	// institute_invitations: accepted before the invitee has a tenant context (see migration 0009).
 	"institute_invitations": true,

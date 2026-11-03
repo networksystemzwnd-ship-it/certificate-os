@@ -11,7 +11,7 @@ APP_DB_PASSWORD=PASS \
 TEST_CHROME_PATH=/path/to/chrome   `# optional` \
 scripts/verify-all.sh        # or: make verify
 ```
-It runs migrations (0001–0016), provisions the restricted role, then `gofmt`, `go vet`, the whole Go suite with `-race -p 1` against real PostgreSQL **as the restricted role** (so row-level security is part of what is proven), and for the web app `npm ci`, typecheck, lint, tests and build.
+It runs migrations (0001–0017), provisions the restricted role, then `gofmt`, `go vet`, the whole Go suite with `-race -p 1` against real PostgreSQL **as the restricted role** (so row-level security is part of what is proven), and for the web app `npm ci`, typecheck, lint, tests and build.
 
 If it fails, send me the first failing output. Likely causes, in order: a Postgres store query that only a real pgx run can catch (all Postgres stores were run only against a stub), a frontend test that was syntax-checked but never executed, a lint rule.
 
@@ -24,6 +24,7 @@ If it fails, send me the first failing output. Likely causes, in order: a Postgr
 | 4 | QR code | Print or show a certificate and scan it with a phone against your real `PUBLIC_BASE_URL` | Wrong `PUBLIC_BASE_URL`, proxy path |
 | 5 | Real spreadsheets | Import one real `.xlsx` (Excel, LibreOffice, Google Sheets export) and one CSV from a real institute | Parser gap: send me the file shape (not the data) |
 | 6 | Reverse proxy | Set `TRUSTED_PROXIES` to your proxy and confirm two different clients get separate login limits (D-180) | All users share one limit |
+| 6b | Several replicas | Set `RATE_LIMIT_STORE=postgres`, run two API instances, fail logins against one then the other: the limit must hold across both (D-182) | Limits multiply per replica |
 | 7 | Backup and restore | `scripts/restore-check.sh` against a real backup on your server (`docs/runbooks/backup-restore.md`) | Backups cannot be trusted until this passes |
 | 8 | Monitoring | Scrape `/metrics` with `METRICS_TOKEN`; add the alerts from `docs/runbooks/monitoring.md` | No visibility |
 | 9 | Dependency scanning | Add `govulncheck ./...` and `npm audit` to CI | Known-vulnerable dependency goes unnoticed |

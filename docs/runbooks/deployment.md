@@ -39,7 +39,7 @@ Never use the `.env.example` development passwords. `SMTP_TLS=none` is refused i
 4. Roll back by redeploying the previous image. If a migration must be undone, restore the backup (rehearsed) rather than running a `down` file against production data.
 
 ## Scaling notes (known limits)
-- Rate limits are in-memory per replica (D-108): with N replicas the effective limit is N times higher. Acceptable for a pilot; a shared limiter is on the backlog. Behind a proxy set `TRUSTED_PROXIES` (D-180), otherwise all clients share one limit key.
+- Rate limits are in-memory per replica by default (D-108): with N replicas the effective limit is N times higher. With more than one replica set `RATE_LIMIT_STORE=postgres` (D-182) for login, registration and invitation limits; the public verification limit stays per replica. Behind a proxy set `TRUSTED_PROXIES` (D-180), otherwise all clients share one limit key.
 - Bulk jobs run in the API process (D-155); the email worker runs in every replica and is safe (one owner per delivery).
 - PDFs are stored in PostgreSQL: expect roughly 50-150 KB per certificate; size the database and backups accordingly.
 

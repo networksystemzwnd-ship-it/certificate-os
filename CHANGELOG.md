@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Shared rate limits: `RATE_LIMIT_STORE=postgres` makes login, registration and invitation limits hold across several API replicas (migration 0017; keys are hashed; fails open to the in-memory window if the counter is down). Default stays `memory`. No new dependencies.
 - Verification kit: `scripts/verify-all.sh` / `make verify` (migrations, restricted role, full Go suite against real PostgreSQL under row-level security, web install/typecheck/lint/tests/build) and `docs/verification-checklist.md` listing what only you can check. README brought up to date.
 - Session cleanup: expired or revoked login sessions are deleted a week after they die by an hourly job. Migration 0016 grants DELETE on `sessions` only. No new dependencies.
 - Trusted proxies: new setting `TRUSTED_PROXIES` so rate limits see the real client address behind a reverse proxy (X-Forwarded-For is read only for requests from the listed proxies, from the right). Without a proxy nothing changes. No migration, no new dependencies.

@@ -1,13 +1,28 @@
 package auth
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"sync"
 	"time"
 )
 
-// Limiter is a fixed-window in-memory rate limiter. It is per-process; a shared limiter
-// (Postgres/Redis) is needed before running multiple API replicas — see DECISIONS D-108.
+// Counter is a shared fixed-window counter (PostgreSQL in production). Hit counts one attempt for key in the
+// current window of the given length and returns the number of attempts so far in that window and how long
+// until the window ends.
+type Counter interface {
+	Hit(ctx context.Context, key string, window time.Duration) (count int, resetIn time.Duration, err error)
+}
+
+// Limiter is a fixed-window rate limiter. By default it is in memory and per process. Use attaches a shared
+// Counter so the limit holds across API replicas; if the shared counter fails, the in-memory window decides
+// (the limiter fails open to a per-process limit rather than blocking logins because a counter is down).
 type Limiter struct {
+	shared Counter
+	name   string
+	onErr  func(error)
+
 	mu     sync.Mutex
 	now    func() time.Time
 	limit  int
@@ -27,6 +42,21 @@ func NewLimiter(limit int, per time.Duration) *Limiter {
 // Allow records an attempt for key and reports whether it is within the limit.
 // When denied it returns how long until the window resets.
 func (l *Limiter) Allow(key string) (bool, time.Duration) {
+	if l.shared != nil {
+		sum := sha256.Sum256([]byte(key))
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		n, reset, err := l.shared.Hit(ctx, l.name+":"+hex.EncodeToString(sum[:]), l.window)
+		cancel()
+		if err == nil {
+			if n > l.limit {
+				return false, reset
+			}
+			return true, 0
+		}
+		if l.onErr != nil {
+			l.onErr(err)
+		}
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	now := l.now()
@@ -54,4 +84,11 @@ func (l *Limiter) SetClock(now func() time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.now = now
+}
+
+// Use attaches a shared counter. name separates this limiter's keys from the others'; the subject (an IP
+// address or email) is hashed before it leaves the process. onErr, if set, is told about counter failures.
+func (l *Limiter) Use(name string, c Counter, onErr func(error)) *Limiter {
+	l.shared, l.name, l.onErr = c, name, onErr
+	return l
 }
