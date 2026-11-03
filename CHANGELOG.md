@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Trusted proxies: new setting `TRUSTED_PROXIES` so rate limits see the real client address behind a reverse proxy (X-Forwarded-For is read only for requests from the listed proxies, from the right). Without a proxy nothing changes. No migration, no new dependencies.
 - Student export now includes enrollments: one row per enrollment with course, batch, status, completion date and grade (students without enrollments keep one row). No migration, no new dependencies.
 - XLSX student import: upload an .xlsx workbook (first sheet) as well as CSV; spreadsheet dates become ISO dates; standard-library reader with size caps against zip bombs, formulas never evaluated. The upload label is now "CSV or Excel file". No new dependencies.
 - Purge of abandoned student-import uploads: an hourly job removes the CSV rows of imports left unfinished for 7 days and marks them cancelled (audited, ids only). Migration 0015 adds two narrow row-level-security policies for the purge worker. No new dependencies.

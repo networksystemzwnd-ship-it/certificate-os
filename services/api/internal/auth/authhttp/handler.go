@@ -5,7 +5,6 @@ package authhttp
 import (
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -74,15 +73,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET /api/v1/me", h.Authenticate(RequireAuth(http.HandlerFunc(h.me))))
 }
 
-// clientIP uses the TCP peer address only. X-Forwarded-For is NOT trusted until a trusted-proxy
-// setting exists (behind a reverse proxy every client would otherwise share one limiter key).
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
+// clientIP is the address rate limits key on: the TCP peer, or the client behind a TRUSTED proxy (httpx.ClientIPs).
+func clientIP(r *http.Request) string { return httpx.ClientIP(r) }
 
 func (h *Handler) limited(w http.ResponseWriter, r *http.Request, retry time.Duration) {
 	secs := int(retry.Seconds()) + 1

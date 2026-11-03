@@ -189,3 +189,17 @@ func TestMetricsToken(t *testing.T) {
 		t.Fatal("a short token must be refused")
 	}
 }
+
+func TestTrustedProxies(t *testing.T) {
+	cfg, err := Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x"}))
+	if err != nil || len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("default must trust nobody: %+v %v", cfg.TrustedProxies, err)
+	}
+	cfg, err = Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x", "TRUSTED_PROXIES": "10.0.0.0/8, 192.0.2.7"}))
+	if err != nil || len(cfg.TrustedProxies) != 2 {
+		t.Fatalf("%+v %v", cfg.TrustedProxies, err)
+	}
+	if _, err := Load(lookupFrom(map[string]string{"DATABASE_URL": "postgres://x", "TRUSTED_PROXIES": "10.0.0.0/8, nonsense"})); err == nil {
+		t.Fatal("garbage must be refused at startup")
+	}
+}

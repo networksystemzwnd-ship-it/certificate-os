@@ -6,10 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/certificate-os/api/internal/platform/httpx"
 )
 
 type Config struct {
@@ -28,6 +31,9 @@ type Config struct {
 	PublicBaseURL string // origin used in certificate QR codes (verification links); defaults to WebOrigin
 	// MetricsToken enables GET /metrics (Prometheus text) for a scraper that presents it as a bearer token. Empty = disabled.
 	MetricsToken string
+	// TrustedProxies are the reverse proxies (IPs or CIDR ranges) whose X-Forwarded-For header is believed when
+	// keying rate limits. Empty = the TCP peer is always used (correct only when clients connect directly).
+	TrustedProxies []netip.Prefix
 	// Email delivery (M5b). EmailProvider is "none" (sending disabled) or "smtp". SMTPPassword is a secret: never log it.
 	EmailProvider    string
 	EmailFrom        string // sender address, e.g. "Certificates <no-reply@example.com>"
@@ -103,6 +109,11 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 	cfg.PDFMaxConcurrent = conc
 
+	if tp, err := httpx.ParseProxies(get("TRUSTED_PROXIES", "")); err != nil {
+		errs = append(errs, fmt.Errorf("TRUSTED_PROXIES: %w", err))
+	} else {
+		cfg.TrustedProxies = tp
+	}
 	cfg.MetricsToken = get("METRICS_TOKEN", "")
 	if cfg.MetricsToken != "" && len(cfg.MetricsToken) < 16 {
 		errs = append(errs, errors.New("METRICS_TOKEN must be at least 16 characters (or empty to disable /metrics)"))

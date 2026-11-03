@@ -3,6 +3,7 @@ package authhttp_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -224,5 +225,46 @@ func TestLoginRateLimited(t *testing.T) {
 	}
 	if last.Code != 429 || last.Header().Get("Retry-After") == "" {
 		t.Fatalf("expected 429 with Retry-After, got %d", last.Code)
+	}
+}
+
+// Behind a trusted proxy each real client has its own login limit; without one, everybody shares the proxy's.
+func TestLoginRateLimitBehindTrustedProxy(t *testing.T) {
+	run := func(trustedList string) (aLimited, bLimited bool) {
+		store := authtest.NewMemStore()
+		svc, _ := auth.NewService(store, auth.Hasher{Iterations: 1000}, time.Hour)
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+		h := authhttp.NewHandler(svc, authhttp.CookieConfig{TTL: time.Hour}, log)
+		mux := http.NewServeMux()
+		h.Register(mux)
+		trusted, err := httpx.ParseProxies(trustedList)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv := httpx.Chain(log, httpx.ClientIPs(trusted)(httpx.CSRF("http://web", mux)))
+		n := 0
+		try := func(client string) int {
+			n++
+			// a different email per attempt, so only the per-address limit (20/min) can link them
+			req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(fmt.Sprintf(`{"email":"u%d@example.com","password":"wrong password"}`, n)))
+			req.RemoteAddr = "10.0.0.1:443" // the proxy
+			req.Header.Set("X-Forwarded-For", client)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(httpx.CSRFHeader, "1")
+			rr := httptest.NewRecorder()
+			srv.ServeHTTP(rr, req)
+			return rr.Code
+		}
+		for i := 0; i < 21; i++ {
+			aLimited = try("198.51.100.1") == 429
+		}
+		bLimited = try("198.51.100.2") == 429
+		return
+	}
+	if a, b := run("10.0.0.0/8"); !a || b {
+		t.Errorf("trusted proxy: client A must be limited (%v) and client B must not (%v)", a, b)
+	}
+	if a, b := run(""); !a || !b {
+		t.Errorf("no trusted proxy: everyone shares the proxy address, so both are limited (%v %v)", a, b)
 	}
 }

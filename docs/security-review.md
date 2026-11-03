@@ -10,7 +10,7 @@ Evidence legend: **T** = automated test, **S** = checked by hand on real Postgre
 | Passwords hashed with PBKDF2-HMAC-SHA256, 600k iterations, rehash supported (D-110) | T |
 | Session token random, only its SHA-256 stored, 12 h absolute TTL, status/role read live every request (D-107) | T |
 | Cookie HttpOnly, SameSite=Lax, `__Host-` prefix and Secure in production (D-107) | T / R |
-| Login and register rate limits (D-108) | T |
+| Login and register rate limits (D-108); client address from `TRUSTED_PROXIES` only for requests from those proxies (D-180) | T (mutation-checked) |
 | Platform roles can only be granted by CLI, never through HTTP (D-111) | T |
 
 ## 2. Request integrity
@@ -66,7 +66,7 @@ Evidence legend: **T** = automated test, **S** = checked by hand on real Postgre
 
 ## 7. Open items (not done)
 1. **Dependency scanning** (Go modules, npm) is not set up; the build sandbox could not reach the registries. Add `govulncheck` and `npm audit` to CI.
-2. **Rate limiters are per process** (D-108). Behind a proxy or with several replicas they are weaker; a shared limiter and trusted-proxy configuration are needed before scaling out.
+2. **Rate limiters are per process** (D-108): with several replicas the effective limit is multiplied; a shared limiter is needed before scaling out. Trusted-proxy handling exists (`TRUSTED_PROXIES`, D-180, tested); it must be set correctly for your proxy, and a wrong range would let clients pick their own key.
 3. **Document uploads** (COS-011) are not built. Import files (CSV/XLSX) are parsed, never stored as files, and have no malware scanning because nothing is executed or served back.
 4. **No real-provider email test**, no bounce handling.
 5. **No external penetration test** and no independent review of the RLS policies.

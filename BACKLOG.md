@@ -172,6 +172,15 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
 - Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
 
+### Trusted proxies for rate limits — Built (needs your verification)
+- Priority: P0 for any deployment behind a reverse proxy
+- Delivered: `httpx.ClientIPs` / `ClientIP`, `TRUSTED_PROXIES` (D-180); auth, staff-invitation and public-verification limits use it.
+- Acceptance:
+  - [x] spoofed headers from untrusted peers ignored; right-to-left walk; IPv6 and IPv4-mapped peers; malformed header; invalid setting refused at startup (tests, mutation-checked)
+  - [x] two clients behind one trusted proxy have separate login limits; without the setting they share one
+  - [ ] confirm with YOUR proxy that it appends the client address to `X-Forwarded-For` and set `TRUSTED_PROXIES` to its address
+- Not included: a shared (multi-replica) limiter, `Forwarded` / `X-Real-IP` headers.
+
 ### XLSX student import — Built (needs your verification)
 - Priority: P0 (brain §3.4)
 - Delivered: `imports.ParseXLSX` / `ParseUpload` (D-179), upload accepts `.xlsx`, wizard text and file picker; OpenAPI 0.16.0.

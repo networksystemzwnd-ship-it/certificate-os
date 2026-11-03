@@ -241,7 +241,7 @@ func run(args []string) error {
 
 	srv := &http.Server{
 		Addr:              ":" + strconv.Itoa(cfg.Port),
-		Handler:           httpx.Chain(log, reg.HTTP(httpx.CORS(cfg.WebOrigin, httpx.CSRF(cfg.WebOrigin, mux)))),
+		Handler:           httpx.Chain(log, httpx.ClientIPs(cfg.TrustedProxies)(reg.HTTP(httpx.CORS(cfg.WebOrigin, httpx.CSRF(cfg.WebOrigin, mux))))),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,

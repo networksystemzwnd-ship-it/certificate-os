@@ -13,6 +13,7 @@ This describes what a pilot deployment needs. It is a checklist, not a claim tha
 ## Settings that must be set in production (`ENV=production`)
 | Setting | Why |
 |---|---|
+| `TRUSTED_PROXIES` (IP/CIDR of your reverse proxy; the proxy must APPEND the real client address to `X-Forwarded-For`) | Without it every visitor behind the proxy shares ONE rate-limit key, so a few failed logins lock everyone out. With it, only the address the proxy saw is believed (read from the right of the header); anything a client writes itself is ignored. Never trust a range clients can reach directly |
 | `DATABASE_URL` (the restricted runtime login, default role `certos_app`, **not** the owner) and `MIGRATE_DATABASE_URL` (owner; production refuses to start if both are the same) | RLS only protects if the app connects as the restricted role |
 | `APP_DB_USER` / `APP_DB_PASSWORD` | Login created by `api db provision-runtime-role`; strong, unique password from a secret store |
 | `WEB_ORIGIN` | Exact https origin of the web app (CORS + CSRF origin check) |
@@ -38,7 +39,7 @@ Never use the `.env.example` development passwords. `SMTP_TLS=none` is refused i
 4. Roll back by redeploying the previous image. If a migration must be undone, restore the backup (rehearsed) rather than running a `down` file against production data.
 
 ## Scaling notes (known limits)
-- Rate limits are in-memory per replica (D-108): with N replicas the effective limit is N times higher. Acceptable for a pilot; a shared limiter is on the backlog.
+- Rate limits are in-memory per replica (D-108): with N replicas the effective limit is N times higher. Acceptable for a pilot; a shared limiter is on the backlog. Behind a proxy set `TRUSTED_PROXIES` (D-180), otherwise all clients share one limit key.
 - Bulk jobs run in the API process (D-155); the email worker runs in every replica and is safe (one owner per delivery).
 - PDFs are stored in PostgreSQL: expect roughly 50-150 KB per certificate; size the database and backups accordingly.
 

@@ -3,7 +3,6 @@ package staff
 import (
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -170,13 +169,8 @@ func (h *Handler) removeMember(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, map[string]any{"removed": true})
 }
 
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
+// clientIP is the address rate limits key on: the TCP peer, or the client behind a TRUSTED proxy (httpx.ClientIPs).
+func clientIP(r *http.Request) string { return httpx.ClientIP(r) }
 
 func (h *Handler) accept(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.PrincipalFrom(r.Context())
