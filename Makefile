@@ -1,4 +1,4 @@
-.PHONY: dev down test lint migrate seed e2e fmt restore-check
+.PHONY: dev down test lint migrate seed e2e fmt restore-check verify
 
 dev:
 	cp -n .env.example .env || true
@@ -31,3 +31,7 @@ e2e:
 # Usage: make restore-check DB=certos   (PGHOST/PGPORT/PGUSER[/PGPASSWORD] from the environment)
 restore-check:
 	scripts/restore-check.sh $(DB)
+
+# Everything the build sandbox could not run: needs TEST_DATABASE_URL and TEST_APP_DATABASE_URL (disposable database).
+verify:
+	scripts/verify-all.sh
