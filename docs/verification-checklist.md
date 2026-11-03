@@ -4,12 +4,7 @@ The code was built in a sandbox that could not reach the Go and npm registries, 
 
 ## 1. One command for the automated parts
 ```bash
-# disposable, empty database; the tests TRUNCATE tables
-TEST_DATABASE_URL=postgres://OWNER:PASS@HOST:5432/certos_verify \
-TEST_APP_DATABASE_URL=postgres://certos_app:PASS@HOST:5432/certos_verify \
-APP_DB_PASSWORD=PASS \
-TEST_CHROME_PATH=/path/to/chrome   `# optional` \
-scripts/verify-all.sh        # or: make verify
+docker compose run --rm verify     # Docker only; uses a disposable PostgreSQL container, never your data
 ```
 It runs migrations (0001–0017), provisions the restricted role, then `gofmt`, `go vet`, the whole Go suite with `-race -p 1` against real PostgreSQL **as the restricted role** (so row-level security is part of what is proven), and for the web app `npm ci`, typecheck, lint, tests and build.
 

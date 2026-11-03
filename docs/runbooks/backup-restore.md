@@ -36,7 +36,10 @@ faithful: every table's row count and **content checksum**, row-level-security f
 grants, and that the restricted role still sees **zero** tenant rows without a tenant context.
 
 ```
-PGHOST=... PGPORT=... PGUSER=<owner> PGPASSWORD=... scripts/restore-check.sh <database_name>
+docker compose run --rm restore-check            # the compose dev database (DB=certos by default)
+DB=other_db docker compose run --rm restore-check
+# Another server: run the script from the toolbox with the connection set:
+docker compose run --rm -e PGHOST=... -e PGPORT=5432 -e PGUSER=<owner> -e PGPASSWORD=... tools scripts/restore-check.sh <database_name>
 ```
 
 Exit code 0 and the line `RESTORE VERIFIED` mean the dump can be restored and is complete. Any difference prints a diff and exits 1.

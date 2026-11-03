@@ -3,13 +3,15 @@
 Multi-tenant certificate management for offline institutes. Source of truth: [`PROJECT_BRAIN.md`](PROJECT_BRAIN.md).
 
 ## Requirements
-Docker 24+ with Compose v2; Go 1.24+ and Node 22+ for running tests outside Docker.
+**Docker 24+ with Compose v2 — nothing else.** Go, Node, Chromium and psql are never needed on your machine: development, tests, linting and verification all run in containers.
 
-## First-time setup (needs network access to the Go and npm registries)
+## First-time setup
 ```bash
-cd services/api && go get github.com/jackc/pgx/v5 && go mod tidy   # creates go.sum — commit it
-cd ../../apps/web && npm install                                    # creates package-lock.json — commit it
+cp .env.example .env        # includes COMPOSE_FILE so the tooling services below are available
+docker compose run --rm tools sh -c "cd services/api && go mod tidy"        # only if services/api/go.sum is missing — commit it
+docker compose run --rm tools sh -c "cd apps/web && npm install"            # only if apps/web/package-lock.json is missing — commit it
 ```
+(The generated lock files are written into your working copy by the container and are owned by root on Linux; `sudo chown` them if that matters to you.)
 
 ## Run
 ```bash
@@ -23,7 +25,7 @@ docker compose up --build
 | Mailpit | http://localhost:8025 |
 | MinIO console | http://localhost:9001 |
 
-Migrations run on API start in development (`MIGRATE_ON_START=true`; refused in production). Manual: `make migrate`, or `go run ./cmd/api migrate status|up|down` in `services/api`.
+Migrations run on API start in development (`MIGRATE_ON_START=true`; refused in production). Manual: `docker compose exec api /api migrate status|up|down`.
 
 ## Local accounts
 `make seed` (or `docker compose exec api /api seed`) creates `superadmin@local.test`, `ops@local.test`, `owner@local.test`
@@ -42,12 +44,16 @@ Institute onboarding and operations review; institute workspace with students, c
 ## Operating it
 - Deployment, backup/restore, monitoring, email and PDF runbooks: `docs/runbooks/`.
 - Security self-review: `docs/security-review.md`. Privacy and retention (DRAFT, not legal advice): `docs/privacy-retention.md`.
-- **What still needs your verification** (the build sandbox could not run Docker, npm, real email or a phone): `docs/verification-checklist.md`; `make verify` runs the automated part.
+- **What still needs your verification** (the build sandbox could not run Docker, npm, real email or a phone): `docs/verification-checklist.md`; `docker compose run --rm verify` runs the automated part.
 - Behind a reverse proxy set `TRUSTED_PROXIES`; `METRICS_TOKEN` enables `/metrics`; see `.env.example`.
 
-## Tests
-`make test` · `make lint`. Postgres integration tests run when `TEST_DATABASE_URL` (owner) points to a disposable Postgres; set `TEST_APP_DATABASE_URL` (the `certos_app` login) as well so the store contracts run under row-level security.
-
-## Troubleshooting
-- API exits at start: check `.env` (missing `DATABASE_URL` fails by design).
-- Reset local data: `docker compose down -v`.
+## Tests, lint, verification (all in Docker)
+```bash
+docker compose run --rm verify          # everything: migrations, Go vet + full suite on a disposable PostgreSQL with RLS and real Chromium, web typecheck/lint/tests/build
+docker compose run --rm test-go         # Go only
+docker compose run --rm test-web        # web only
+docker compose run --rm lint            # gofmt, go vet, eslint, tsc
+docker compose run --rm fmt             # gofmt + prettier (writes files)
+docker compose run --rm tools bash      # a shell in the toolbox (Go, Node, Chromium, psql)
+```
+A throw-away `testdb` container (in memory, never your dev database) is started for the Go tests. `make <same names>` are optional shortcuts if you happen to have make.

@@ -1,37 +1,23 @@
-.PHONY: dev down test lint migrate seed e2e fmt restore-check verify
-
+# Optional shortcuts. Everything runs in Docker; nothing here needs Go, Node or psql on the host.
+# Requires COMPOSE_FILE=compose.yaml:compose.tools.yaml (set in .env, see .env.example).
+.PHONY: dev down test lint fmt verify migrate seed restore-check
 dev:
 	cp -n .env.example .env || true
 	docker compose up --build
-
 down:
 	docker compose down
-
 migrate:
-	cd services/api && go run ./cmd/api migrate up
-
+	docker compose exec api /api migrate up
 seed:
 	docker compose exec api /api seed
-
-fmt:
-	cd services/api && gofmt -w .
-	cd apps/web && npm run format
-
-lint:
-	cd services/api && test -z "$$(gofmt -l .)" && go vet ./...
-	cd apps/web && npm run lint && npm run typecheck
-
 test:
-	cd services/api && go test -p 1 ./...
-	cd apps/web && npm test
-
-e2e:
-	@echo "E2E suite arrives with later milestones."
-
-# Usage: make restore-check DB=certos   (PGHOST/PGPORT/PGUSER[/PGPASSWORD] from the environment)
-restore-check:
-	scripts/restore-check.sh $(DB)
-
-# Everything the build sandbox could not run: needs TEST_DATABASE_URL and TEST_APP_DATABASE_URL (disposable database).
+	docker compose run --rm test-go && docker compose run --rm test-web
+lint:
+	docker compose run --rm lint
+fmt:
+	docker compose run --rm fmt
 verify:
-	scripts/verify-all.sh
+	docker compose run --rm verify
+# Usage: make restore-check DB=certos
+restore-check:
+	DB=$(DB) docker compose run --rm restore-check

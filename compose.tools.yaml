@@ -1,0 +1,86 @@
+# Tooling that runs ONLY in containers (nothing but Docker on the host). Loaded together with compose.yaml through
+# COMPOSE_FILE in .env (see .env.example). Everything here sits in the "tools" profile, so `docker compose up` ignores it.
+#
+#   docker compose run --rm verify          everything: migrations, Go vet/tests on real PostgreSQL + RLS, web typecheck/lint/tests/build
+#   docker compose run --rm test-go         Go tests only      | docker compose run --rm test-web   web tests only
+#   docker compose run --rm lint            gofmt, go vet, eslint, tsc
+#   docker compose run --rm fmt             gofmt + prettier (writes files)
+#   docker compose run --rm restore-check   backup/restore rehearsal of the dev database
+#   docker compose run --rm tools <cmd>     any command in the toolbox, e.g.  tools sh -c "cd services/api && go mod tidy"
+x-tools: &tools
+  build: ./tools
+  image: certificate-os-tools:local
+  profiles: [tools]
+  working_dir: /repo
+  volumes:
+    - ./:/repo
+    - web_node_modules:/repo/apps/web/node_modules
+    - go_mod_cache:/go/pkg/mod
+    - go_build_cache:/root/.cache/go-build
+  environment: &tools-env
+    TEST_DATABASE_URL: postgres://postgres:postgres@testdb:5432/certos_verify?sslmode=disable
+    TEST_APP_DATABASE_URL: postgres://certos_app:verify-app-pw@testdb:5432/certos_verify?sslmode=disable
+    APP_DB_PASSWORD: verify-app-pw
+    TEST_CHROME_PATH: /usr/local/bin/chromium-nosandbox
+    CI: "true"
+
+services:
+  testdb:
+    image: postgres:16-alpine
+    profiles: [tools]
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: certos_verify
+    tmpfs:
+      - /var/lib/postgresql/data      # disposable: the test suite TRUNCATEs tables
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d certos_verify"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  tools:
+    <<: *tools
+    entrypoint: []
+    command: ["bash"]
+
+  verify:
+    <<: *tools
+    depends_on:
+      testdb: {condition: service_healthy}
+    command: ["bash", "scripts/container/verify.sh"]
+
+  test-go:
+    <<: *tools
+    depends_on:
+      testdb: {condition: service_healthy}
+    command: ["bash", "scripts/container/verify.sh", "go"]
+
+  test-web:
+    <<: *tools
+    command: ["bash", "scripts/container/verify.sh", "web"]
+
+  lint:
+    <<: *tools
+    command: ["bash", "scripts/container/lint.sh"]
+
+  fmt:
+    <<: *tools
+    command: ["bash", "-c", "(cd services/api && gofmt -w .) && cd apps/web && npm install --no-audit --no-fund && npm run format"]
+
+  restore-check:
+    <<: *tools
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      <<: *tools-env
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-certos}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-}
+    command: ["bash", "-c", "scripts/restore-check.sh \"${DB:-certos}\""]
+
+volumes:
+  web_node_modules:
+  go_mod_cache:
+  go_build_cache:
