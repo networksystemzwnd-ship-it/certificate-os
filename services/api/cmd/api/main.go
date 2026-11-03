@@ -166,6 +166,8 @@ func run(args []string) error {
 
 	mux := http.NewServeMux()
 	health.Register(mux, pool)
+	// Expired and revoked sessions are deleted a week after they die (D-181).
+	go authSvc.RunPurge(ctx, time.Hour, log)
 	authH := authhttp.NewHandler(authSvc, authhttp.CookieConfig{Secure: cfg.CookieSecure, TTL: cfg.SessionTTL}, log)
 	authH.Register(mux)
 	(&tenancy.Handler{Svc: &tenancy.Service{Store: tenancypg.New(pool)}, Log: log, Authn: authH.Authenticate}).Register(mux)

@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- Session cleanup: expired or revoked login sessions are deleted a week after they die by an hourly job. Migration 0016 grants DELETE on `sessions` only. No new dependencies.
 - Trusted proxies: new setting `TRUSTED_PROXIES` so rate limits see the real client address behind a reverse proxy (X-Forwarded-For is read only for requests from the listed proxies, from the right). Without a proxy nothing changes. No migration, no new dependencies.
 - Student export now includes enrollments: one row per enrollment with course, batch, status, completion date and grade (students without enrollments keep one row). No migration, no new dependencies.
 - XLSX student import: upload an .xlsx workbook (first sheet) as well as CSV; spreadsheet dates become ISO dates; standard-library reader with size caps against zip bombs, formulas never evaluated. The upload label is now "CSV or Excel file". No new dependencies.

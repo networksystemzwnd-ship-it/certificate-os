@@ -11,9 +11,10 @@ import (
 )
 
 type session struct {
-	userID  string
-	expires time.Time
-	revoked bool
+	userID    string
+	expires   time.Time
+	revoked   bool
+	revokedAt time.Time
 }
 
 type MemStore struct {
@@ -88,8 +89,8 @@ func (m *MemStore) PrincipalBySession(_ context.Context, h []byte, now time.Time
 func (m *MemStore) RevokeSession(_ context.Context, h []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[key(h)]; s != nil {
-		s.revoked = true
+	if s := m.sessions[key(h)]; s != nil && !s.revoked {
+		s.revoked, s.revokedAt = true, time.Now()
 	}
 	return nil
 }
@@ -98,8 +99,8 @@ func (m *MemStore) RevokeUserSessions(_ context.Context, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, s := range m.sessions {
-		if s.userID == userID {
-			s.revoked = true
+		if s.userID == userID && !s.revoked {
+			s.revoked, s.revokedAt = true, time.Now()
 		}
 	}
 	return nil
@@ -123,4 +124,17 @@ func (m *MemStore) SetPlatformRole(_ context.Context, id string, r auth.Platform
 		return nil
 	}
 	return auth.ErrNotFound
+}
+
+func (m *MemStore) DeleteDeadSessions(_ context.Context, before time.Time) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for k, s := range m.sessions {
+		if s.expires.Before(before) || (s.revoked && s.revokedAt.Before(before)) {
+			delete(m.sessions, k)
+			n++
+		}
+	}
+	return n, nil
 }

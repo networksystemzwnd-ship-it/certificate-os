@@ -31,7 +31,7 @@
 | Delivery attempts | Candidate for purge after N months *(decide)* |
 | Verification events | Candidate for purge after N months *(decide)* |
 | Audit log | Kept for the audit period *(decide)*; append-only, so purge needs a deliberate admin procedure not built yet |
-| Sessions | Expire after 12 h; expired rows may be purged (not automated yet) |
+| Sessions | Expire after 12 h; expired or revoked rows are deleted a week later by an hourly job (D-181) |
 | Rejected applications | *(decide)* |
 | Backups | Contain everything above; retention of backups bounds true deletion time *(decide)*. See `runbooks/backup-restore.md` |
 

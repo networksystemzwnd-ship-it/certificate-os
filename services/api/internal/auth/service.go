@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/mail"
 	"strings"
 	"time"
@@ -113,4 +114,30 @@ func (s *Service) SuspendUser(ctx context.Context, userID string) error {
 
 func (s *Service) ReactivateUser(ctx context.Context, userID string) error {
 	return s.Store.SetUserStatus(ctx, userID, StatusActive)
+}
+
+// DeadSessionGrace is how long an expired or revoked session row is kept before it is deleted.
+const DeadSessionGrace = 7 * 24 * time.Hour
+
+// PurgeDeadSessions deletes sessions that expired or were revoked more than DeadSessionGrace ago.
+func (s *Service) PurgeDeadSessions(ctx context.Context) (int, error) {
+	return s.Store.DeleteDeadSessions(ctx, s.Now().Add(-DeadSessionGrace))
+}
+
+// RunPurge purges once at start and then every interval until ctx ends; failures are logged and retried.
+func (s *Service) RunPurge(ctx context.Context, every time.Duration, log *slog.Logger) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		if n, err := s.PurgeDeadSessions(ctx); err != nil && ctx.Err() == nil {
+			log.Error("session purge failed", "err", err)
+		} else if n > 0 {
+			log.Info("dead sessions purged", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }

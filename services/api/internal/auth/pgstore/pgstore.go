@@ -113,3 +113,8 @@ func (s *Store) SetPlatformRole(ctx context.Context, userID string, role auth.Pl
 	}
 	return s.exec(ctx, `UPDATE users SET platform_role = nullif($2, '') WHERE id = $1::uuid`, userID, string(role))
 }
+
+func (s *Store) DeleteDeadSessions(ctx context.Context, before time.Time) (int, error) {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < $1 OR (revoked_at IS NOT NULL AND revoked_at < $1)`, before)
+	return int(tag.RowsAffected()), err
+}

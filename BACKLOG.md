@@ -172,6 +172,15 @@ Template: see `PROJECT_BRAIN.md` §12.5.
   - [ ] frontend tests/lint/typecheck (never run in the build sandbox)
 - Not included: charts/time series, exports, per-provider delivery health (M6b metrics), "operational errors" panel.
 
+### Session cleanup — Built (needs your verification)
+- Priority: P1
+- Delivered: migration 0016, `auth.Store.DeleteDeadSessions`, hourly job (D-181).
+- Acceptance:
+  - [x] contract (memory): long-expired deleted, recently dead kept inside the grace period, live sessions never touched, second run finds nothing
+  - [x] verified on real PostgreSQL 16 as the restricted role: DELETE refused before the migration, allowed on `sessions` after it, still refused on `users`
+  - [ ] the Postgres contract through real pgx
+- Not included: purge of verification events and delivery attempts (retention periods still to decide, `docs/privacy-retention.md`).
+
 ### Trusted proxies for rate limits — Built (needs your verification)
 - Priority: P0 for any deployment behind a reverse proxy
 - Delivered: `httpx.ClientIPs` / `ClientIP`, `TRUSTED_PROXIES` (D-180); auth, staff-invitation and public-verification limits use it.

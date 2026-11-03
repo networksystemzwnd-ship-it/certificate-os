@@ -70,6 +70,36 @@ func RunStoreContract(t *testing.T, newStore func(t *testing.T) auth.Store) {
 		}
 	})
 
+	t.Run("dead sessions are deleted after a grace period; live ones are never touched", func(t *testing.T) {
+		s := newStore(t)
+		u, _ := s.CreateUser(ctx, "purge@x.com", "h")
+		real := time.Now()
+		must := func(err error) {
+			t.Helper()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		must(s.CreateSession(ctx, u.ID, hash("old-expired"), real.Add(-2*time.Hour)))
+		must(s.CreateSession(ctx, u.ID, hash("just-expired"), real.Add(-time.Minute)))
+		must(s.CreateSession(ctx, u.ID, hash("revoked"), real.Add(48*time.Hour)))
+		must(s.CreateSession(ctx, u.ID, hash("live"), real.Add(time.Hour)))
+		must(s.RevokeSession(ctx, hash("revoked")))
+
+		if n, err := s.DeleteDeadSessions(ctx, real.Add(-time.Hour)); err != nil || n != 1 {
+			t.Fatalf("grace period: want only the long-expired session deleted, got %d %v", n, err)
+		}
+		if n, err := s.DeleteDeadSessions(ctx, real.Add(30*time.Minute)); err != nil || n != 2 {
+			t.Fatalf("want the recently expired and the revoked session deleted, got %d %v", n, err)
+		}
+		if _, err := s.PrincipalBySession(ctx, hash("live"), real); err != nil {
+			t.Fatalf("a live session must survive: %v", err)
+		}
+		if n, err := s.DeleteDeadSessions(ctx, real.Add(30*time.Minute)); err != nil || n != 0 {
+			t.Fatalf("second run must find nothing, got %d %v", n, err)
+		}
+	})
+
 	t.Run("status and role are read live", func(t *testing.T) {
 		s := newStore(t)
 		u, _ := s.CreateUser(ctx, "a@x.com", "h")

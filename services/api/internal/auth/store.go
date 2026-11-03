@@ -56,4 +56,7 @@ type Store interface {
 	RevokeUserSessions(ctx context.Context, userID string) error
 	SetUserStatus(ctx context.Context, userID string, status UserStatus) error
 	SetPlatformRole(ctx context.Context, userID string, role PlatformRole) error
+	// DeleteDeadSessions removes sessions that expired, or were revoked, before `before`, and returns how many.
+	// Live sessions and recently dead ones are kept.
+	DeleteDeadSessions(ctx context.Context, before time.Time) (int, error)
 }

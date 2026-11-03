@@ -12,6 +12,7 @@ Evidence legend: **T** = automated test, **S** = checked by hand on real Postgre
 | Cookie HttpOnly, SameSite=Lax, `__Host-` prefix and Secure in production (D-107) | T / R |
 | Login and register rate limits (D-108); client address from `TRUSTED_PROXIES` only for requests from those proxies (D-180) | T (mutation-checked) |
 | Platform roles can only be granted by CLI, never through HTTP (D-111) | T |
+| Dead sessions are deleted after 7 days; DELETE is granted on `sessions` only (D-181) | T, S |
 
 ## 2. Request integrity
 | Control | Evidence |
