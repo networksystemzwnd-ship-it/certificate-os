@@ -55,13 +55,13 @@ it('protects owners and the own row, and removes a member after confirmation', a
     },
     'DELETE /api/v1/institute/invitations/i-1': () => ({ body: { invitation: invitation({ status: 'revoked' }) } }),
   });
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
   const user = userEvent.setup();
   render(<StaffPage selfEmail="owner@x.com" />);
   const table = await screen.findByRole('table', { name: 'Members' });
   const rows = within(table).getAllByRole('row');
   expect(within(rows[1]!).queryByRole('button')).not.toBeInTheDocument(); // owner row: no actions
   await user.click(within(rows[2]!).getByRole('button', { name: 'Remove' }));
+  await user.click(await screen.findByRole('button', { name: 'Confirm remove' }));
   await waitFor(() => expect(removed).toBe(true));
 
   await user.click(await screen.findByRole('button', { name: 'Revoke' }));

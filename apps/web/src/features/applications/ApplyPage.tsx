@@ -75,7 +75,7 @@ function ApplicationForm({ app, onChanged }: { app: Application | null; onChange
   const submitDisabled = busy;
 
   return (
-    <form onSubmit={onSave} noValidate>
+    <form onSubmit={onSave} noValidate className="panel stack">
       {current?.status === 'changes_requested' && current.decision_reason && (
         <div role="note" className="state">
           <strong>The reviewer asked for changes:</strong> {current.decision_reason}

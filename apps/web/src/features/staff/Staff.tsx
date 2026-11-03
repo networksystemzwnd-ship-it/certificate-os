@@ -125,6 +125,7 @@ function MemberRow({ member, self, onChanged }: { member: Member; self: boolean;
   const [role, setRole] = useState<'admin' | 'staff'>(member.role === 'admin' ? 'admin' : 'staff');
   const [grants, setGrants] = useState<string[]>(member.grants);
   const [editing, setEditing] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const m = useMutation();
   const protectedRow = member.role === 'owner' || self;
 
@@ -160,15 +161,17 @@ function MemberRow({ member, self, onChanged }: { member: Member; self: boolean;
             ) : (
               <button type="button" onClick={() => setEditing(true)}>Change role</button>
             )}{' '}
-            <button
-              type="button"
-              disabled={m.busy}
-              onClick={() => {
-                if (window.confirm(`Remove ${member.email || 'this member'}? They lose access immediately.`)) m.run(() => staffApi.removeMember(member.id), onChanged);
-              }}
-            >
-              Remove
-            </button>
+            <button type="button" disabled={m.busy} onClick={() => setRemoving(true)}>Remove</button>
+            {removing && (
+              <div className="reason" role="group" aria-label={`Remove ${member.email || 'this member'}?`}>
+                <strong>Remove {member.email || 'this member'}?</strong>
+                <p className="muted">They lose access immediately. You can invite them again later.</p>
+                <div className="row-actions">
+                  <button type="button" className="danger" disabled={m.busy} onClick={() => m.run(() => staffApi.removeMember(member.id), () => { setRemoving(false); onChanged(); })}>Confirm remove</button>
+                  <button type="button" onClick={() => setRemoving(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
             <Problem error={m.error} />
           </>
         )}

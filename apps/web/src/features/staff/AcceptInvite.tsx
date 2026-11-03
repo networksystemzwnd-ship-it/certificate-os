@@ -55,7 +55,7 @@ export function AcceptInvite() {
 
   if (!token && !result) {
     return (
-      <section>
+      <section className="auth panel">
         <h1>Invitation</h1>
         <p role="alert">This invitation link is incomplete. Ask the institute owner to send it again.</p>
       </section>
@@ -64,7 +64,7 @@ export function AcceptInvite() {
   if (status === 'loading') return <Loading label="Checking your session…" />;
   if (status === 'anonymous') {
     return (
-      <section>
+      <section className="auth panel">
         <h1>You have been invited</h1>
         <p>
           Log in or create an account <strong>using the email address the invitation was sent to</strong>, then you will join the institute
@@ -77,7 +77,7 @@ export function AcceptInvite() {
     );
   }
   return (
-    <section>
+    <section className="auth panel">
       <h1>Invitation</h1>
       {!result && !error && <Loading label="Joining the institute…" />}
       {result && (
