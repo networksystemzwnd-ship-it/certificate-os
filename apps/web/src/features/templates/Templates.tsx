@@ -130,7 +130,7 @@ function Editor({ initial, existing, onSaved, onCancel }: {
   };
 
   return (
-    <form onSubmit={submit} aria-label={existing ? 'New version' : 'New template'}>
+    <form onSubmit={submit} className="panel stack" aria-label={existing ? 'New version' : 'New template'}>
       <h4>{existing ? `New version of ${existing.name}` : 'New template'}</h4>
       {!existing && (
         <>

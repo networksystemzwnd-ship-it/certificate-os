@@ -155,7 +155,7 @@ export function ImportWizard() {
           </button>
 
           {job.status === 'validated' && (
-            <div>
+            <div className="panel stack">
               <h4>2. Review</h4>
               <p role="status">
                 <strong>{job.counts.valid}</strong> ready to import · <strong>{job.counts.errors}</strong> with problems ·{' '}

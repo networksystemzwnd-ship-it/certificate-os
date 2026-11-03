@@ -82,7 +82,7 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
   };
 
   return (
-    <section aria-labelledby="invite-h">
+    <section aria-labelledby="invite-h" className="panel stack">
       <h4 id="invite-h">Invite someone</h4>
       <form onSubmit={submit} aria-label="Invite staff">
         <p>

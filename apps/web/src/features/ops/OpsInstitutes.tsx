@@ -64,7 +64,7 @@ export function OpsInstitutes() {
           </table>
         ))}
       {target && (
-        <form onSubmit={(e) => { e.preventDefault(); void run(() => opsInstitutesApi.suspend(target.id, reason)); }} aria-label="Suspend institute">
+        <form onSubmit={(e) => { e.preventDefault(); void run(() => opsInstitutesApi.suspend(target.id, reason)); }} className="panel stack" aria-label="Suspend institute">
           <h3>Suspend {target.name}</h3>
           <label htmlFor="reason">Reason (10–2000 characters, recorded in the audit log)</label><br />
           <textarea id="reason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} required aria-invalid={Boolean(fe.reason)} />
