@@ -21,7 +21,7 @@ export function ApplicationQueue() {
   return (
     <section>
       <h2>Institute applications</h2>
-      <div role="group" aria-label="Filter by status">
+      <div role="group" aria-label="Filter by status" className="segmented">
         {FILTERS.map((f, i) => (
           <button key={f.label} type="button" aria-pressed={i === idx} onClick={() => setIdx(i)}>
             {f.label}

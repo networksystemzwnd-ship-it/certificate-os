@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- UX redesign, slice 4 (D-183): Operations tab strip and a segmented status filter on the applications queue (CSS plus one class name; no text change). Not screenshotted.
 - UX redesign, slice 3 (D-183): removing a staff member now uses an inline "Confirm remove" step instead of a browser dialog; Apply and Accept-invite pages styled as cards. Frontend only; tests/staff.test.tsx updated, not run in the sandbox.
 - UX redesign, slice 1 (D-183): new design system with dark mode, app shell and grouped sidebar, Overview getting-started and attention notice, friendlier empty/error states, collapsible create forms, grouped filters, inline confirmation (with reason) for revoke/replace instead of a browser prompt, card-style public verification page, mobile layout. Frontend only; no API, migration or dependency change. Frontend tests, lint and build were not run by me; a rendered preview was checked in desktop, mobile and dark.
 - Shared rate limits: `RATE_LIMIT_STORE=postgres` makes login, registration and invitation limits hold across several API replicas (migration 0017; keys are hashed; fails open to the in-memory window if the counter is down). Default stays `memory`. No new dependencies.

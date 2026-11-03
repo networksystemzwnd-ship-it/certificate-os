@@ -354,3 +354,11 @@ label:has(+ br) { display: block; }
 .stack > * + * { margin-top: .85rem; }
 .stack > h4, .stack > h3 { margin-top: 0; }
 section.panel { margin-bottom: 1rem; }
+
+/* ---- operations ---- */
+nav[aria-label='Operations'] { display: flex; flex-wrap: wrap; gap: .25rem; margin: 0 0 1.25rem; border-bottom: 1px solid var(--line); }
+nav[aria-label='Operations'] .nav-link { border-radius: 8px 8px 0 0; padding: .5rem .85rem; }
+.segmented { display: inline-flex; flex-wrap: wrap; gap: 0; margin: 0 0 1rem; border: 1px solid var(--line-strong, var(--line)); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.segmented button { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.segmented button + button { border-left: 1px solid var(--line); }
+.segmented button[aria-pressed='true'] { background: var(--seal); color: #fff; }
