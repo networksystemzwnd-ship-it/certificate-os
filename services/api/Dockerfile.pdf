@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1
+# API image WITH headless Chromium, needed to render certificate PDFs (the distroless image has no browser).
+# Same build as Dockerfile; only the runtime stage differs. Runs as a non-root user.
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -o /out/api ./cmd/api
+
+FROM alpine:3.21
+# Chromium plus fonts so names in Latin and common Indic scripts render. Pin the alpine tag (above) to pin the browser build.
+RUN apk add --no-cache chromium font-noto font-noto-devanagari tzdata \
+ && adduser -D -u 10001 app
+COPY --from=build /out/api /api
+USER 10001:10001
+EXPOSE 8080
+ENTRYPOINT ["/api"]

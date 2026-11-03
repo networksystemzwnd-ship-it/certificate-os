@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- PDF rendering in Docker (D-185): `services/api/Dockerfile.pdf` (Alpine, Chromium, Noto fonts, non-root) and `compose.pdf.yaml`; the distroless API image has no browser, so issuing answered "PDF rendering not enabled". Add `compose.pdf.yaml` to `COMPOSE_FILE`. Your own Dockerfile is untouched. Not built by me (no Docker).
 - Docker-only tooling (D-184): `docker compose run --rm verify|test-go|test-web|lint|fmt|restore-check|tools`; toolbox image with Go, Node, Chromium and psql; disposable test database container; README, verification checklist and backup runbook rewritten for it. The host no longer needs Go, Node, make or psql. Never executed by me (no Docker in the sandbox): first run may need small fixes.
 - UX redesign, slice 4 (D-183): Operations tab strip and a segmented status filter on the applications queue (CSS plus one class name; no text change). Not screenshotted.
 - UX redesign, slice 3 (D-183): removing a staff member now uses an inline "Confirm remove" step instead of a browser dialog; Apply and Accept-invite pages styled as cards. Frontend only; tests/staff.test.tsx updated, not run in the sandbox.

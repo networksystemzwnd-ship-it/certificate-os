@@ -1,0 +1,12 @@
+# Turns on certificate PDF rendering: builds the API from Dockerfile.pdf (Chromium included) and points the API at it.
+# Loaded through COMPOSE_FILE in .env. The sandbox flag is needed because Chromium cannot create its own sandbox inside a
+# default Docker container; the API still runs as a non-root user and gives the browser no network, no environment and a
+# throw-away profile (see docs/runbooks/certificate-pdf-rendering.md).
+services:
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile.pdf
+    environment:
+      PDF_CHROME_PATH: /usr/bin/chromium
+      PDF_CHROME_NO_SANDBOX: "true"

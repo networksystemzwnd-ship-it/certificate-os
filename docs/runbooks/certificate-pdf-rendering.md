@@ -5,6 +5,10 @@ Certificates are rendered to PDF by a pinned headless Chromium that the API star
 
 ## Enable
 
+**With Docker Compose (development):** `compose.pdf.yaml` builds the API from `services/api/Dockerfile.pdf` (Alpine + Chromium + fonts, non-root) and sets `PDF_CHROME_PATH`. Add it to `COMPOSE_FILE` in `.env` (`compose.yaml:compose.tools.yaml:compose.pdf.yaml`, `;` on Windows), then `docker compose up --build`. For production, fold the same runtime stage into your own Dockerfile.
+
+**Manually:**
+
 1. Install a Chromium/Chrome build in the image that runs the API and pin its version (do not use "latest").
 2. Set `PDF_CHROME_PATH` to its absolute path, e.g. `/usr/bin/chromium`.
 3. Set `PUBLIC_BASE_URL` to the public https origin of the verification pages (it is printed in the QR code
